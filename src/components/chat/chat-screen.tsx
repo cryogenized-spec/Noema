@@ -1,124 +1,165 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon } from '@iconify/react';
-import { MessageBubble } from '@/components/chat/message-bubble';
-import { MessageMenu } from '@/components/chat/message-menu';
-import { useChatStore } from '@/store/chat-store';
-import type { ChatMessage } from '@/types/message';
-
-interface MenuState {
-  open: boolean;
-  message: ChatMessage | null;
-  x: number;
-  y: number;
-}
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "@iconify/react";
+import { useChatStore } from "@/store/chat-store";
+import { MessageBubble } from "@/components/chat/message-bubble";
+import { MessageContextMenu } from "@/components/chat/context-menu";
+import type { ChatMessage } from "@/types/chat";
 
 export function ChatScreen() {
-  const [draft, setDraft] = useState('');
-  const [menu, setMenu] = useState<MenuState>({ open: false, message: null, x: 0, y: 0 });
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const { messages, addMessage, hydrateMessages, hydrated, hydrating } = useChatStore();
+  const [draft, setDraft] = useState("");
+  const [agentPending, setAgentPending] = useState(false);
+  const [menuState, setMenuState] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    message: ChatMessage | null;
+  }>({ visible: false, x: 0, y: 0, message: null });
 
-  const { messages, hydrated, loadingAgent, hydrate, addMessage, askAgentForMessage } = useChatStore();
+  const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    hydrate();
-  }, [hydrate]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length]);
-
-  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
-
-  const submit = async () => {
-    if (!canSend) {
-      return;
+    if (!hydrated && !hydrating) {
+      void hydrateMessages();
     }
+  }, [hydrateMessages, hydrated, hydrating]);
 
-    const content = draft.trim();
-    setDraft('');
-    await addMessage(content, 'user');
+  useEffect(() => {
+    if (!listRef.current) return;
+    listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages.length, agentPending]);
+
+  const hasMessages = messages.length > 0;
+
+  const sendMessage = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    await addMessage({ role: "user", content: trimmed });
+    setDraft("");
   };
 
-  return (
-    <div className="relative flex h-full flex-col rounded-3xl border border-noema-stroke bg-noema-panel/70 shadow-panel backdrop-blur-xl">
-      <div className="noema-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
-        {!hydrated ? <p className="text-sm text-noema-muted">Loading local messages…</p> : null}
-        {hydrated && messages.length === 0 ? (
-          <p className="rounded-2xl border border-noema-stroke/70 bg-black/10 px-3 py-2 text-sm text-noema-muted">
-            Start your first thread. Long-press any message for quick actions.
-          </p>
-        ) : null}
+  const askAgent = async (sourceMessage: ChatMessage) => {
+    if (agentPending) return;
+    setAgentPending(true);
 
-        {messages.map((message) => (
-          <MessageBubble
-            key={message.id}
-            message={message}
-            onLongPress={(selectedMessage, coordinates) =>
-              setMenu({ open: true, message: selectedMessage, x: coordinates.x, y: coordinates.y })
-            }
-          />
-        ))}
-        <div ref={bottomRef} />
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: sourceMessage.content,
+          context: { action: "ask_agent", sourceMessageId: sourceMessage.id },
+        }),
+      });
+
+      const payload = (await response.json()) as { content?: string; provider?: string; error?: string };
+      const content = payload.content || "I could not generate a response.";
+
+      await addMessage({
+        role: "agent",
+        content,
+        metadata: { provider: payload.provider ?? "unknown" },
+      });
+    } catch {
+      await addMessage({
+        role: "system",
+        content: "Agent request failed. Please try again.",
+      });
+    } finally {
+      setAgentPending(false);
+    }
+  };
+
+  const placeholder = useMemo(
+    () =>
+      "Start with a thought, clip, or task. Long-press any message to Ask Agent for a focused next step.",
+    [],
+  );
+
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-3">
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-noema-border/90 bg-black/15 p-3"
+      >
+        {!hasMessages ? (
+          <div className="rounded-xl border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-300/90">
+            {placeholder}
+          </div>
+        ) : (
+          messages.map((message) => (
+            <MessageBubble
+              key={message.id ?? `${message.role}-${message.createdAt}`}
+              message={message}
+              onLongPress={(msg, x, y) =>
+                setMenuState({ visible: true, message: msg, x, y })
+              }
+            />
+          ))
+        )}
+
+        {agentPending && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl border border-violet-300/20 bg-violet-500/12 px-3 py-2 text-xs text-slate-200">
+              Noema Agent is drafting a response...
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="border-t border-noema-stroke p-2">
-        <div className="flex items-end gap-2 rounded-2xl border border-noema-stroke bg-black/15 p-2">
-          <button type="button" className="rounded-xl p-2 text-noema-muted hover:bg-white/10" aria-label="Attachment coming soon">
-            <Icon icon="solar:paperclip-linear" className="text-xl" />
+      <div className="rounded-2xl border border-noema-border/90 bg-noema-glass/90 p-2 backdrop-blur-xl">
+        <div className="flex items-end gap-2">
+          <button
+            type="button"
+            aria-label="Attach file"
+            className="shrink-0 rounded-xl border border-white/20 bg-white/5 p-2 text-slate-200"
+          >
+            <Icon icon="solar:paperclip-bold" className="text-lg" />
           </button>
+
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            rows={1}
+            placeholder="Message Noema"
+            className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-slate-300/70 focus:outline-none"
             onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
+              if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                void submit();
+                void sendMessage();
               }
             }}
-            placeholder="Message Noema"
-            rows={1}
-            className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-sm text-white outline-none placeholder:text-noema-muted"
           />
-          <button type="button" className="rounded-xl p-2 text-noema-muted hover:bg-white/10" aria-label="Voice input coming soon">
-            <Icon icon="solar:microphone-3-linear" className="text-xl" />
-          </button>
+
           <button
             type="button"
-            onClick={() => void submit()}
-            disabled={!canSend}
-            className="rounded-xl bg-indigo-400/70 p-2 text-white transition enabled:hover:bg-indigo-300 disabled:opacity-50"
-            aria-label="Send message"
+            aria-label="Voice placeholder"
+            className="shrink-0 rounded-xl border border-white/20 bg-white/5 p-2 text-slate-200"
           >
-            <Icon icon="solar:arrow-up-linear" className="text-xl" />
+            <Icon icon="solar:microphone-bold" className="text-lg" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void sendMessage()}
+            disabled={!draft.trim()}
+            className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Send
           </button>
         </div>
       </div>
 
-      <MessageMenu
-        isOpen={menu.open}
-        anchor={{ x: menu.x, y: menu.y }}
-        onClose={() => setMenu({ open: false, message: null, x: 0, y: 0 })}
-        onCopy={() => {
-          if (menu.message) {
-            navigator.clipboard.writeText(menu.message.content);
-          }
-          setMenu({ open: false, message: null, x: 0, y: 0 });
-        }}
-        onAskAgent={() => {
-          if (menu.message) {
-            void askAgentForMessage(menu.message);
-          }
-          setMenu({ open: false, message: null, x: 0, y: 0 });
-        }}
+      <MessageContextMenu
+        visible={menuState.visible}
+        position={{ x: menuState.x, y: menuState.y }}
+        message={menuState.message}
+        busy={agentPending}
+        onClose={() => setMenuState({ visible: false, x: 0, y: 0, message: null })}
+        onAskAgent={askAgent}
       />
-
-      {loadingAgent ? (
-        <p className="pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 rounded-full border border-noema-stroke bg-[#111937]/90 px-3 py-1 text-xs text-noema-muted shadow-panel">
-          Agent thinking…
-        </p>
-      ) : null}
-    </div>
+    </section>
   );
 }

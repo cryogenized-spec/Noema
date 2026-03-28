@@ -1,23 +1,23 @@
-import type { Config } from 'tailwindcss';
+import type { Config } from "tailwindcss";
 
-export default {
-  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
+const config: Config = {
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
-      boxShadow: {
-        panel: '0 12px 36px rgba(11, 20, 48, 0.45)',
-      },
       colors: {
         noema: {
-          bg: '#060b1d',
-          panel: 'rgba(21, 28, 53, 0.68)',
-          stroke: 'rgba(172, 190, 255, 0.22)',
-          accent: '#9ca7ff',
-          accentStrong: '#c9b0ff',
-          muted: '#95a0c4',
+          midnight: "#090f25",
+          indigo: "#20163d",
+          glass: "rgba(255,255,255,0.08)",
+          border: "rgba(255,255,255,0.18)",
         },
+      },
+      boxShadow: {
+        glass: "0 12px 32px rgba(5, 10, 30, 0.4)",
       },
     },
   },
   plugins: [],
-} satisfies Config;
+};
+
+export default config;
