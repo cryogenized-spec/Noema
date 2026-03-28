@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { db } from "@/lib/db/client";
+import { normalizeMarkdownSource } from "@/lib/markdown/contract";
 import type { ChatMessage } from "@/types/chat";
 
 const sortMessages = (messages: ChatMessage[]) =>
@@ -39,7 +40,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const createdAt = message.createdAt ?? new Date().toISOString();
     const messageToSave: ChatMessage = {
       role: message.role,
-      content: message.content,
+      content: normalizeMarkdownSource(message.content),
       createdAt,
       metadata: message.metadata,
     };

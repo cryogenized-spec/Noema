@@ -5,6 +5,7 @@ import { TopBar } from "@/components/layout/top-bar";
 import { BottomTabs, type TabKey } from "@/components/layout/bottom-tabs";
 import { ChatScreen } from "@/components/chat/chat-screen";
 import { GlassPanel } from "@/components/ui/glass-panel";
+import { ApiLockboxScreen } from "@/components/settings/api-lockbox-screen";
 
 const placeholders: Record<Exclude<TabKey, "chat">, { title: string; description: string }> = {
   signals: {
@@ -35,6 +36,8 @@ export default function HomePage() {
       <div className="min-h-0 flex-1">
         {activeTab === "chat" ? (
           <ChatScreen />
+        ) : activeTab === "settings" ? (
+          <ApiLockboxScreen />
         ) : (
           <GlassPanel>
             <section className="flex h-full min-h-64 flex-col justify-center px-5 py-7 text-center">

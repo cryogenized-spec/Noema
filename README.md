@@ -49,15 +49,16 @@ src/
   store/
   types/
 public/
-  icons/                    # PWA icons
+  icons/                    # PWA icons (SVG placeholders)
 ```
 
 ## Environment variables
 
 See `.env.example`.
 
-- `AGENT_PROVIDER` (`mock` or `openai`, default `mock`)
-- `OPENAI_API_KEY` (required only for `openai` provider)
+- `AGENT_PROVIDER` (`mock` or `openai`)  
+  - **Recommended first deployment:** `mock`
+- `OPENAI_API_KEY` (required only when `AGENT_PROVIDER=openai`)
 - `OPENAI_MODEL` (optional model override)
 
 ## Local development
@@ -76,23 +77,72 @@ npm run build
 npm run start
 ```
 
-## PWA/manifest notes
+## Vercel deployment (standard Next.js)
+
+This repository is deployable as a **standard Next.js project from repo root**.
+
+Use these settings in Vercel:
+
+- **Framework Preset:** Next.js
+- **Root Directory:** `/` (repo root)
+- **Build Command:** `next build` (default)
+- **Output Directory:** `.next` (default)
+- **Install Command:** `npm install` (default)
+
+Then set environment variables:
+
+- `AGENT_PROVIDER=mock` (recommended for first deploy)
+- optionally `OPENAI_API_KEY` and `OPENAI_MODEL` if/when you switch provider to OpenAI
+
+## PWA / manifest notes
 
 - Primary manifest source is `src/app/manifest.ts` (App Router idiomatic).
-- PWA icons/static assets are in `public/icons` (SVG placeholders in-repo; replace with PNGs if your deployment policy requires).
-- Metadata icon declarations and manifest icon declarations both point to assets in `public/icons`.
+- PWA icons/static assets are in `public/icons`.
+- This deployment-rescue pass intentionally uses **text-safe SVG assets** to avoid binary-file PR issues.
 
-## Deploy to Vercel (GitHub workflow)
 
-1. Push this repository to GitHub.
-2. In Vercel, click **Add New → Project** and import the repo.
-3. Framework preset: **Next.js** (auto-detected).
-4. Add environment variables in Vercel project settings (only if needed):
-   - `AGENT_PROVIDER` (default `mock`)
-   - `OPENAI_API_KEY` (only if using OpenAI)
-   - `OPENAI_MODEL` (optional)
-5. Deploy. Vercel will run the default Next.js build command.
-6. Open the preview URL on mobile and install the PWA from browser UI.
+### 404 troubleshooting checklist (Vercel)
+
+If `your-project.vercel.app` shows `404: NOT_FOUND`, verify in Vercel dashboard:
+
+1. **Project -> Settings -> General -> Root Directory** is `/` (repo root).
+2. **Project -> Settings -> Git -> Production Branch** matches your pushed branch (usually `main`).
+3. The latest deployment was created from the correct repository and commit SHA.
+4. Build logs show Next.js routes generated (for this app, `/`, `/api/agent`, `/manifest.webmanifest`).
+
+This repo also includes `vercel.json` with `framework: "nextjs"` to remove framework detection ambiguity.
+
+
+## API Lockbox (Settings subsystem)
+
+Noema now includes an **API Lockbox** screen under **Settings** for BYOK provider management.
+
+Included providers in this pass (with 5 representative models each):
+- OpenAI
+- Google Gemini
+- Anthropic
+- xAI
+- DeepSeek
+- Moonshot / Kimi
+- Qwen
+- Mistral
+
+Details:
+- model and pricing metadata is locally curated from official provider documentation links in `src/lib/providers/catalog.ts`
+- pricing is read-only in UI and may be `N/A` where official docs vary by region/tier
+- BYOK secrets are stored locally on-device in this phase via a lockbox abstraction (encryption hook prepared for later hardening)
+- Gemini safety filters expose all four harm categories with default `BLOCK_NONE`, plus user-selectable filter level toggles
+
+
+## Markdown foundation (Stage 1)
+
+Noema now treats **raw markdown strings** as the canonical text format for displayable text surfaces.
+
+- shared renderer: `src/components/markdown/markdown-renderer.tsx`
+- canonical storage contract helpers: `src/lib/markdown/contract.ts`
+- current syntax support: headings, emphasis, strikethrough, blockquotes, ordered/unordered/task lists, links, tables, inline code, fenced code blocks, and horizontal rules
+- raw HTML rendering is disabled
+- Obsidian-style `[[wikilink]]` and `![[embed]]` tokens are transformed to safe internal link tokens for forward compatibility
 
 ## License
 

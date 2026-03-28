@@ -82,10 +82,10 @@ export function ChatScreen() {
     <section className="flex h-full min-h-0 flex-col gap-3">
       <div
         ref={listRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-noema-border/90 bg-black/15 p-3"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-3"
       >
         {!hasMessages ? (
-          <div className="rounded-xl border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-300/90">
+          <div className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/40 p-4 text-sm text-slate-300">
             {placeholder}
           </div>
         ) : (
@@ -102,19 +102,19 @@ export function ChatScreen() {
 
         {agentPending && (
           <div className="flex justify-start">
-            <div className="rounded-2xl border border-violet-300/20 bg-violet-500/12 px-3 py-2 text-xs text-slate-200">
+            <div className="rounded-2xl border border-violet-300/25 bg-violet-500/16 px-3 py-2 text-xs text-slate-100">
               Noema Agent is drafting a response...
             </div>
           </div>
         )}
       </div>
 
-      <div className="rounded-2xl border border-noema-border/90 bg-noema-glass/90 p-2 backdrop-blur-xl">
+      <div className="rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
         <div className="flex items-end gap-2">
           <button
             type="button"
             aria-label="Attach file"
-            className="shrink-0 rounded-xl border border-white/20 bg-white/5 p-2 text-slate-200"
+            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
           >
             <Icon icon="solar:paperclip-bold" className="text-lg" />
           </button>
@@ -124,7 +124,7 @@ export function ChatScreen() {
             onChange={(event) => setDraft(event.target.value)}
             rows={1}
             placeholder="Message Noema"
-            className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-white/20 bg-black/20 px-3 py-2 text-sm text-white placeholder:text-slate-300/70 focus:outline-none"
+            className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -136,7 +136,7 @@ export function ChatScreen() {
           <button
             type="button"
             aria-label="Voice placeholder"
-            className="shrink-0 rounded-xl border border-white/20 bg-white/5 p-2 text-slate-200"
+            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
           >
             <Icon icon="solar:microphone-bold" className="text-lg" />
           </button>
@@ -145,7 +145,7 @@ export function ChatScreen() {
             type="button"
             onClick={() => void sendMessage()}
             disabled={!draft.trim()}
-            className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Send
           </button>

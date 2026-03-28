@@ -32,10 +32,10 @@ export function MessageBubble({ message, onLongPress }: MessageBubbleProps) {
       <div
         className={`max-w-[88%] rounded-2xl border px-3 py-2.5 text-sm ${
           isUser
-            ? "border-blue-300/20 bg-blue-500/24 text-slate-50"
+            ? "border-blue-300/20 bg-blue-500/18 text-slate-100"
             : message.role === "agent"
-              ? "border-violet-200/20 bg-violet-500/14 text-slate-50"
-              : "border-slate-300/20 bg-slate-600/35 text-slate-100"
+              ? "border-violet-300/20 bg-violet-500/18 text-slate-100"
+              : "border-slate-400/20 bg-slate-800/75 text-slate-100"
         }`}
         onTouchStart={(event) => {
           const touch = event.touches[0];
@@ -52,7 +52,7 @@ export function MessageBubble({ message, onLongPress }: MessageBubbleProps) {
         }}
       >
         <MarkdownMessage content={message.content} />
-        <p className="mt-1 text-right text-[10px] text-slate-300/85">
+        <p className="mt-1 text-right text-[10px] text-slate-400">
           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>

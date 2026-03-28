@@ -19,7 +19,7 @@ interface BottomTabsProps {
 
 export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
   return (
-    <nav className="rounded-2xl border border-noema-border/90 bg-noema-glass/90 px-2 py-2 backdrop-blur-xl">
+    <nav className="rounded-2xl border border-noema-border bg-noema-glassStrong px-2 py-2 backdrop-blur-xl">
       <ul className="grid grid-cols-5 gap-1">
         {tabs.map((tab) => {
           const active = tab.key === activeTab;
@@ -27,14 +27,14 @@ export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
             <li key={tab.key}>
               <button
                 type="button"
-                className={`flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-[11px] transition ${
+                className={`flex w-full flex-col items-center justify-center rounded-xl px-1 py-2 text-[11px] transition-colors ${
                   active
-                    ? "bg-white/14 text-white"
-                    : "text-slate-300/85 hover:bg-white/10 hover:text-slate-100"
+                    ? "border border-violet-300/30 bg-violet-500/18 text-slate-100"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
                 }`}
                 onClick={() => onTabChange(tab.key)}
               >
-                <Icon icon={tab.icon} className="mb-1 text-lg" />
+                <Icon icon={tab.icon} className={`mb-1 text-lg ${active ? "text-slate-100" : "text-slate-400"}`} />
                 <span>{tab.label}</span>
               </button>
             </li>
