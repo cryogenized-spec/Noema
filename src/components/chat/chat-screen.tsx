@@ -5,12 +5,15 @@ import { Icon } from "@iconify/react";
 import { useChatStore } from "@/store/chat-store";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { MessageContextMenu } from "@/components/chat/context-menu";
+import { MarkdownHelperMenu } from "@/components/markdown/markdown-helper-menu";
+import { applyMarkdownInsertion, type MarkdownHelperAction } from "@/lib/markdown/authoring";
 import type { ChatMessage } from "@/types/chat";
 
 export function ChatScreen() {
   const { messages, addMessage, hydrateMessages, hydrated, hydrating } = useChatStore();
   const [draft, setDraft] = useState("");
   const [agentPending, setAgentPending] = useState(false);
+  const [showMarkdownMenu, setShowMarkdownMenu] = useState(false);
   const [menuState, setMenuState] = useState<{
     visible: boolean;
     x: number;
@@ -19,6 +22,7 @@ export function ChatScreen() {
   }>({ visible: false, x: 0, y: 0, message: null });
 
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -72,6 +76,27 @@ export function ChatScreen() {
     }
   };
 
+
+  const applyHelper = (action: MarkdownHelperAction) => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const result = applyMarkdownInsertion({
+      value: draft,
+      selectionStart: input.selectionStart ?? draft.length,
+      selectionEnd: input.selectionEnd ?? draft.length,
+      action,
+    });
+
+    setDraft(result.value);
+    setShowMarkdownMenu(false);
+
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(result.selectionStart, result.selectionEnd);
+    });
+  };
+
   const placeholder = useMemo(
     () =>
       "Start with a thought, clip, or task. Long-press any message to Ask Agent for a focused next step.",
@@ -109,8 +134,17 @@ export function ChatScreen() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
+      <div className="relative rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
         <div className="flex items-end gap-2">
+          <button
+            type="button"
+            aria-label="Markdown helpers"
+            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
+            onClick={() => setShowMarkdownMenu((current) => !current)}
+          >
+            <Icon icon="solar:text-field-focus-bold" className="text-lg" />
+          </button>
+
           <button
             type="button"
             aria-label="Attach file"
@@ -120,6 +154,7 @@ export function ChatScreen() {
           </button>
 
           <textarea
+            ref={inputRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={1}
@@ -150,6 +185,7 @@ export function ChatScreen() {
             Send
           </button>
         </div>
+        {showMarkdownMenu && <MarkdownHelperMenu onAction={applyHelper} />}
       </div>
 
       <MessageContextMenu
