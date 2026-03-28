@@ -1,78 +1,53 @@
-"use client";
+'use client';
 
-import { type ReactNode, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import rehypeHighlight from "rehype-highlight";
-import "highlight.js/styles/github-dark.css";
+import type { ComponentPropsWithoutRef } from 'react';
+import { Icon } from '@iconify/react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
 
 interface MarkdownMessageProps {
   content: string;
 }
 
-const getLanguage = (className?: string) => {
-  const match = /language-([\w-]+)/.exec(className ?? "");
-  return match?.[1] ?? "text";
-};
+function InlineCode(props: ComponentPropsWithoutRef<'code'>) {
+  return <code className="rounded-md bg-white/10 px-1 py-0.5 text-[0.9em]" {...props} />;
+}
 
-export function MarkdownMessage({ content }: MarkdownMessageProps) {
-  const rehypePlugins = useMemo(() => [rehypeHighlight], []);
+function CodeBlock({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) {
+  const language = className?.replace('language-', '') ?? '';
+  const code = String(children).replace(/\n$/, '');
+
+  if (!className) {
+    return <InlineCode {...props}>{children}</InlineCode>;
+  }
 
   return (
-    <ReactMarkdown
-      rehypePlugins={rehypePlugins}
-      components={{
-        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
-        ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-4 last:mb-0">{children}</ul>,
-        ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-4 last:mb-0">{children}</ol>,
-        code: ({ className, children }) => {
-          if (!className) {
-            return <code className="rounded-md bg-black/30 px-1 py-0.5 text-[0.92em]">{children}</code>;
-          }
+    <div className="my-3 overflow-hidden rounded-2xl border border-noema-stroke bg-[#0a1022]">
+      <div className="flex items-center justify-between border-b border-noema-stroke/70 px-3 py-2 text-xs text-noema-muted">
+        <span>{language || 'code'}</span>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(code)}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition hover:bg-white/10"
+        >
+          <Icon icon="solar:copy-linear" className="text-sm" /> Copy
+        </button>
+      </div>
+      <pre className="noema-scrollbar overflow-x-auto px-3 py-3 text-sm">
+        <code className={className} {...props}>
+          {children}
+        </code>
+      </pre>
+    </div>
+  );
+}
 
-          return <code className={className}>{children}</code>;
-        },
-        pre: ({ children }) => {
-          const child = children as ReactNode;
-          const normalized = Array.isArray(child) ? child[0] : child;
-
-          if (
-            !normalized ||
-            typeof normalized !== "object" ||
-            !("props" in normalized) ||
-            !normalized.props
-          ) {
-            return <pre className="overflow-x-auto">{children}</pre>;
-          }
-
-          const className = (normalized.props as { className?: string }).className;
-          const codeValue = String((normalized.props as { children?: ReactNode }).children ?? "").replace(/\n$/, "");
-          const language = getLanguage(className);
-
-          return (
-            <div className="my-2 overflow-hidden rounded-xl border border-white/15 bg-slate-950/80">
-              <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-300/90">
-                <span>{language}</span>
-                <button
-                  type="button"
-                  className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-slate-200"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(codeValue);
-                    } catch {
-                      // Clipboard API may fail in non-secure contexts.
-                    }
-                  }}
-                >
-                  Copy
-                </button>
-              </div>
-              <pre className="overflow-x-auto p-3 text-xs sm:text-sm">{children}</pre>
-            </div>
-          );
-        },
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+export function MarkdownMessage({ content }: MarkdownMessageProps) {
+  return (
+    <div className="prose-code prose prose-invert max-w-none prose-p:my-2 prose-p:text-sm prose-headings:my-2 prose-headings:text-base">
+      <ReactMarkdown rehypePlugins={[rehypeHighlight]} components={{ code: CodeBlock }}>
+        {content}
+      </ReactMarkdown>
+    </div>
   );
 }

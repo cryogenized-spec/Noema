@@ -1,33 +1,25 @@
-import type { Metadata, Viewport } from "next";
-import "./globals.css";
-
-const appName = "Noema";
-const appDescription = "Noema is a calm, local-first communication and intelligence app.";
-const themeColor = "#090f25";
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: appName,
-  description: appDescription,
-  applicationName: appName,
+  title: 'Noema',
+  description: 'Calm, local-first communication and intelligence for power users.',
+  applicationName: 'Noema',
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: appName,
-  },
-  icons: {
-    icon: [
-      { url: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml" },
-      { url: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml" },
-    ],
-    apple: [{ url: "/icons/icon-192.svg" }],
+    statusBarStyle: 'black-translucent',
+    title: 'Noema',
   },
 };
 
 export const viewport: Viewport = {
-  themeColor,
+  themeColor: '#090e22',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>{children}</body>

@@ -1,57 +1,88 @@
-"use client";
+'use client';
 
-import { create } from "zustand";
-import { db } from "@/lib/db/client";
-import type { ChatMessage } from "@/types/chat";
-
-const sortMessages = (messages: ChatMessage[]) =>
-  [...messages].sort((a, b) => {
-    const byDate = a.createdAt.localeCompare(b.createdAt);
-    if (byDate !== 0) return byDate;
-    return (a.id ?? 0) - (b.id ?? 0);
-  });
+import { create } from 'zustand';
+import type { ChatMessage, MessageRole } from '@/types/message';
+import { getDb } from '@/lib/db/client';
 
 interface ChatState {
   messages: ChatMessage[];
   hydrated: boolean;
-  hydrating: boolean;
-  hydrateMessages: () => Promise<void>;
-  addMessage: (message: Omit<ChatMessage, "id" | "createdAt"> & { createdAt?: string }) => Promise<ChatMessage>;
+  loadingAgent: boolean;
+  hydrate: () => Promise<void>;
+  addMessage: (content: string, role: MessageRole, metadata?: ChatMessage['metadata']) => Promise<ChatMessage>;
+  askAgentForMessage: (message: ChatMessage) => Promise<void>;
 }
+
+const buildMessage = (
+  role: MessageRole,
+  content: string,
+  metadata?: ChatMessage['metadata'],
+): ChatMessage => ({
+  id: crypto.randomUUID(),
+  role,
+  content,
+  metadata,
+  createdAt: new Date().toISOString(),
+});
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   hydrated: false,
-  hydrating: false,
-  hydrateMessages: async () => {
-    if (get().hydrating || get().hydrated) return;
+  loadingAgent: false,
+  hydrate: async () => {
+    if (get().hydrated) {
+      return;
+    }
 
-    set({ hydrating: true });
+    const db = getDb();
+
+    if (!db) {
+      set({ hydrated: true });
+      return;
+    }
+
+    const messages = await db.messages.orderBy('createdAt').toArray();
+    set({ messages, hydrated: true });
+  },
+  addMessage: async (content, role, metadata) => {
+    const message = buildMessage(role, content, metadata);
+    const db = getDb();
+
+    set((state) => ({ messages: [...state.messages, message] }));
+
+    if (db) {
+      await db.messages.put(message);
+    }
+
+    return message;
+  },
+  askAgentForMessage: async (message) => {
+    set({ loadingAgent: true });
 
     try {
-      const messages = await db.messages.toArray();
-      set({ messages: sortMessages(messages), hydrated: true });
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: `Help me with this: ${message.content}`,
+          messageContext: message.content,
+        }),
+      });
+
+      const data = (await response.json()) as { content?: string; error?: string };
+
+      if (!response.ok || !data.content) {
+        throw new Error(data.error ?? 'Agent response was empty.');
+      }
+
+      await get().addMessage(data.content, 'agent', { sourceMessageId: message.id });
+    } catch (error) {
+      await get().addMessage(
+        `Agent could not complete the request. ${error instanceof Error ? error.message : ''}`,
+        'system',
+      );
     } finally {
-      set({ hydrating: false });
+      set({ loadingAgent: false });
     }
-  },
-  addMessage: async (message) => {
-    const createdAt = message.createdAt ?? new Date().toISOString();
-    const messageToSave: ChatMessage = {
-      role: message.role,
-      content: message.content,
-      createdAt,
-      metadata: message.metadata,
-    };
-
-    const id = await db.messages.add(messageToSave);
-    const persisted = { ...messageToSave, id };
-
-    set((state) => {
-      const merged = [...state.messages.filter((item) => item.id !== id), persisted];
-      return { messages: sortMessages(merged) };
-    });
-
-    return persisted;
   },
 }));

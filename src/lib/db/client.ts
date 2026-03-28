@@ -1,15 +1,27 @@
-import Dexie, { type EntityTable } from "dexie";
-import type { ChatMessage } from "@/types/chat";
+import Dexie, { type Table } from 'dexie';
+import type { ChatMessage } from '@/types/message';
 
 class NoemaDatabase extends Dexie {
-  messages!: EntityTable<ChatMessage, "id">;
+  messages!: Table<ChatMessage, string>;
 
   constructor() {
-    super("noema-db");
+    super('noema');
     this.version(1).stores({
-      messages: "++id, role, createdAt",
+      messages: 'id, createdAt, role',
     });
   }
 }
 
-export const db = new NoemaDatabase();
+let dbInstance: NoemaDatabase | null = null;
+
+export function getDb() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (!dbInstance) {
+    dbInstance = new NoemaDatabase();
+  }
+
+  return dbInstance;
+}
