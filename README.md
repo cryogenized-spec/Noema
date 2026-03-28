@@ -100,6 +100,18 @@ Then set environment variables:
 - PWA icons/static assets are in `public/icons`.
 - This deployment-rescue pass intentionally uses **text-safe SVG assets** to avoid binary-file PR issues.
 
+
+### 404 troubleshooting checklist (Vercel)
+
+If `your-project.vercel.app` shows `404: NOT_FOUND`, verify in Vercel dashboard:
+
+1. **Project -> Settings -> General -> Root Directory** is `/` (repo root).
+2. **Project -> Settings -> Git -> Production Branch** matches your pushed branch (usually `main`).
+3. The latest deployment was created from the correct repository and commit SHA.
+4. Build logs show Next.js routes generated (for this app, `/`, `/api/agent`, `/manifest.webmanifest`).
+
+This repo also includes `vercel.json` with `framework: "nextjs"` to remove framework detection ambiguity.
+
 ## License
 
 GNU Affero General Public License v3.0 (`AGPL-3.0-only`). See [`LICENSE`](./LICENSE).
