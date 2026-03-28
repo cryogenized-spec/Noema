@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -11,10 +11,52 @@ interface MarkdownRendererProps {
   content: string;
 }
 
+interface CodeFenceProps {
+  children: ReactNode;
+  className?: string;
+}
+
 const getLanguage = (className?: string) => {
   const match = /language-([\w-]+)/.exec(className ?? "");
   return match?.[1] ?? "text";
 };
+
+function CodeFence({ children, className }: CodeFenceProps) {
+  const [copied, setCopied] = useState(false);
+  const language = getLanguage(className);
+  const codeValue = String(children ?? "").replace(/\n$/, "");
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(codeValue);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="my-2 overflow-hidden rounded-xl border border-noema-border bg-[#0a1227]/95 shadow-[0_8px_24px_rgba(2,6,23,0.45)]">
+      <div className="flex items-center justify-between border-b border-noema-borderSoft bg-slate-900/80 px-3 py-2 text-[11px] uppercase tracking-wide text-slate-300">
+        <span className="rounded-md border border-noema-borderSoft bg-slate-800/80 px-2 py-0.5 font-medium text-slate-200">
+          {language}
+        </span>
+        <button
+          type="button"
+          className="rounded-md border border-noema-borderSoft bg-slate-800/80 px-2 py-0.5 text-[10px] font-medium text-slate-200 transition hover:bg-slate-700/90"
+          onClick={copyCode}
+          aria-label="Copy code block"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-3 text-xs leading-relaxed sm:text-sm">
+        <code className={className}>{children}</code>
+      </pre>
+    </div>
+  );
+}
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   const remarkPlugins = useMemo(() => [remarkGfm], []);
@@ -39,7 +81,12 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-4 text-slate-100 last:mb-0">{children}</ol>,
         li: ({ children }) => <li className="leading-relaxed">{children}</li>,
         a: ({ children, href }) => (
-          <a href={href} className="text-violet-300 underline underline-offset-2" target={href?.startsWith("http") ? "_blank" : undefined} rel={href?.startsWith("http") ? "noreferrer" : undefined}>
+          <a
+            href={href}
+            className="text-violet-300 underline underline-offset-2"
+            target={href?.startsWith("http") ? "_blank" : undefined}
+            rel={href?.startsWith("http") ? "noreferrer" : undefined}
+          >
             {children}
           </a>
         ),
@@ -68,30 +115,8 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
           }
 
           const className = (normalized.props as { className?: string }).className;
-          const codeValue = String((normalized.props as { children?: ReactNode }).children ?? "").replace(/\n$/, "");
-          const language = getLanguage(className);
-
-          return (
-            <div className="my-2 overflow-hidden rounded-xl border border-noema-borderSoft bg-slate-950/85">
-              <div className="flex items-center justify-between border-b border-noema-borderSoft px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-300">
-                <span>{language}</span>
-                <button
-                  type="button"
-                  className="rounded bg-white/10 px-2 py-0.5 text-[10px] text-slate-200"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(codeValue);
-                    } catch {
-                      // Clipboard API may fail in non-secure contexts.
-                    }
-                  }}
-                >
-                  Copy
-                </button>
-              </div>
-              <pre className="overflow-x-auto p-3 text-xs sm:text-sm">{children}</pre>
-            </div>
-          );
+          const nestedChildren = (normalized.props as { children?: ReactNode }).children;
+          return <CodeFence className={className}>{nestedChildren}</CodeFence>;
         },
       }}
     >
