@@ -7,15 +7,12 @@ import { ChatScreen } from "@/components/chat/chat-screen";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { ApiLockboxScreen } from "@/components/settings/api-lockbox-screen";
 import { AgentStudioScreen } from "@/components/agents/agent-studio-screen";
+import { OrganizerScreen } from "@/components/organizer/organizer-screen";
 
-const placeholders: Record<Exclude<TabKey, "chat" | "agents">, { title: string; description: string }> = {
+const placeholders: Record<Exclude<TabKey, "chat" | "agents" | "organizer">, { title: string; description: string }> = {
   signals: {
     title: "Signals",
     description: "Your curated updates and watchpoints will appear here in a future slice.",
-  },
-  organizer: {
-    title: "Organizer",
-    description: "Tasks, notes, and planning utilities will land after the chat foundation.",
   },
   settings: {
     title: "Settings",
@@ -35,6 +32,8 @@ export default function HomePage() {
           <ChatScreen />
         ) : activeTab === "agents" ? (
           <AgentStudioScreen />
+        ) : activeTab === "organizer" ? (
+          <OrganizerScreen />
         ) : activeTab === "settings" ? (
           <ApiLockboxScreen />
         ) : (
