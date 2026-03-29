@@ -12,7 +12,10 @@ export type ContextActionId =
   | "convert_note"
   | "share"
   | "ask_agent"
+  | "ask_agent_different"
   | "summarize"
+  | "rewrite_message"
+  | "explain_message"
   | "rewrite_tone"
   | "extract_tasks"
   | "edit"
@@ -45,10 +48,16 @@ const messageActions: ContextActionItem[] = [
   { id: "translate", label: "Translate", placeholder: true, description: "Coming soon" },
   { id: "convert_note", label: "Convert to Note" },
   { id: "share", label: "Share" },
-  { id: "ask_agent", label: "Ask Agent" },
-  { id: "summarize", label: "Summarize" },
+];
+
+const agentActions: ContextActionItem[] = [
+  { id: "ask_agent", label: "Ask selected agent" },
+  { id: "ask_agent_different", label: "Ask different agent" },
+  { id: "summarize", label: "Summarize (Private)" },
+  { id: "rewrite_message", label: "Rewrite" },
+  { id: "explain_message", label: "Explain" },
+  { id: "extract_tasks", label: "Extract tasks", placeholder: true, description: "Coming soon" },
   { id: "rewrite_tone", label: "Rewrite in tone…", placeholder: true, description: "Coming soon" },
-  { id: "extract_tasks", label: "Extract tasks" },
 ];
 
 const ownMessageActions: ContextActionItem[] = [
@@ -75,6 +84,7 @@ export function buildContextActionGroups(message: ChatMessage, context: MessageP
 
   if (context.kind === "message") {
     groups.push({ title: "Message", actions: messageActions });
+    groups.push({ title: "Agent", actions: agentActions });
     if (message.role === "user") {
       groups.push({ title: "Your message", actions: ownMessageActions });
     }

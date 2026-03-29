@@ -1,33 +1,35 @@
 import type { AgentProvider } from "@/lib/ai/types";
-import type { AgentContext } from "@/types/chat";
+import type { ProviderExecutionPayload } from "@/lib/runtime/types";
 
 export const openAIProvider: AgentProvider = {
   name: "openai",
-  async generateResponse(prompt: string, context?: AgentContext): Promise<string> {
-    const apiKey = process.env.OPENAI_API_KEY;
+  async generateResponse(payload: ProviderExecutionPayload): Promise<string> {
+    const apiKey = payload.apiKey || process.env.OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured.");
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const baseUrl = (payload.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
+    const response = await fetch(`${baseUrl}/responses`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+        model: payload.modelId || process.env.OPENAI_MODEL || "gpt-4.1-mini",
         input: [
           {
             role: "system",
-            content:
-              "You are Noema Agent. Be concise, practical, calm, and action-oriented for power users.",
+            content: payload.systemPrompt,
           },
+          ...payload.conversation,
           {
             role: "user",
-            content: `Action: ${context?.action ?? "ask_agent"}\n\nMessage:\n${prompt}`,
+            content: payload.prompt,
           },
         ],
+        ...payload.generationSettings,
       }),
     });
 

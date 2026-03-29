@@ -5,6 +5,8 @@ import { db } from "@/lib/db/client";
 import { normalizeMarkdownSource } from "@/lib/markdown/contract";
 import type { ChatMessage } from "@/types/chat";
 
+const ACTIVE_AGENT_KEY = "noema-thread-default-active-agent";
+
 const sortMessages = (messages: ChatMessage[]) =>
   [...messages].sort((a, b) => {
     const byDate = a.createdAt.localeCompare(b.createdAt);
@@ -12,18 +14,38 @@ const sortMessages = (messages: ChatMessage[]) =>
     return (a.id ?? 0) - (b.id ?? 0);
   });
 
+const readActiveAgentId = () => {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(ACTIVE_AGENT_KEY);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const writeActiveAgentId = (id: number | null) => {
+  if (typeof window === "undefined") return;
+  if (id === null) {
+    window.localStorage.removeItem(ACTIVE_AGENT_KEY);
+    return;
+  }
+  window.localStorage.setItem(ACTIVE_AGENT_KEY, String(id));
+};
+
 interface ChatState {
   messages: ChatMessage[];
+  activeAgentId: number | null;
   hydrated: boolean;
   hydrating: boolean;
   hydrateMessages: () => Promise<void>;
   addMessage: (message: Omit<ChatMessage, "id" | "createdAt"> & { createdAt?: string }) => Promise<ChatMessage>;
   updateMessage: (id: number, content: string) => Promise<void>;
   deleteMessage: (id: number) => Promise<void>;
+  setActiveAgentId: (id: number | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
+  activeAgentId: null,
   hydrated: false,
   hydrating: false,
   hydrateMessages: async () => {
@@ -33,7 +55,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       const messages = await db.messages.toArray();
-      set({ messages: sortMessages(messages), hydrated: true });
+      set({ messages: sortMessages(messages), hydrated: true, activeAgentId: readActiveAgentId() });
     } finally {
       set({ hydrating: false });
     }
@@ -76,5 +98,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   deleteMessage: async (id) => {
     await db.messages.delete(id);
     set((state) => ({ messages: state.messages.filter((item) => item.id !== id) }));
+  },
+  setActiveAgentId: (id) => {
+    writeActiveAgentId(id);
+    set({ activeAgentId: id });
   },
 }));

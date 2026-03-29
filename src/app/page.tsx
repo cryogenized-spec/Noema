@@ -6,15 +6,12 @@ import { BottomTabs, type TabKey } from "@/components/layout/bottom-tabs";
 import { ChatScreen } from "@/components/chat/chat-screen";
 import { GlassPanel } from "@/components/ui/glass-panel";
 import { ApiLockboxScreen } from "@/components/settings/api-lockbox-screen";
+import { AgentStudioScreen } from "@/components/agents/agent-studio-screen";
 
-const placeholders: Record<Exclude<TabKey, "chat">, { title: string; description: string }> = {
+const placeholders: Record<Exclude<TabKey, "chat" | "agents">, { title: string; description: string }> = {
   signals: {
     title: "Signals",
     description: "Your curated updates and watchpoints will appear here in a future slice.",
-  },
-  agents: {
-    title: "Agents",
-    description: "Agent roster, tools, and orchestrations are intentionally deferred for now.",
   },
   organizer: {
     title: "Organizer",
@@ -36,6 +33,8 @@ export default function HomePage() {
       <div className="min-h-0 flex-1">
         {activeTab === "chat" ? (
           <ChatScreen />
+        ) : activeTab === "agents" ? (
+          <AgentStudioScreen />
         ) : activeTab === "settings" ? (
           <ApiLockboxScreen />
         ) : (

@@ -98,15 +98,15 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         hr: () => <hr className="my-3 border-noema-borderSoft" />,
         table: ({ children }) => (
           <div className="my-2 overflow-x-auto rounded-lg border border-noema-borderSoft">
-            <table className="w-full border-collapse text-left text-xs">{children}</table>
+            <table className="w-full border-collapse text-left text-xs sm:text-sm">{children}</table>
           </div>
         ),
-        thead: ({ children }) => <thead className="bg-slate-900/70 text-slate-200">{children}</thead>,
-        th: ({ children }) => <th className="border-b border-noema-borderSoft px-2 py-1 font-medium">{children}</th>,
-        td: ({ children }) => <td className="border-b border-noema-borderSoft px-2 py-1 text-slate-300">{children}</td>,
+        thead: ({ children }) => <thead className="bg-slate-900/80 text-slate-200">{children}</thead>,
+        th: ({ children }) => <th className="border-b border-noema-borderSoft px-2 py-1.5 font-medium">{children}</th>,
+        td: ({ children }) => <td className="border-b border-noema-borderSoft px-2 py-1.5 align-top text-slate-300">{children}</td>,
         code: ({ className, children }) => {
           if (!className) {
-            return <code className="rounded-md bg-black/35 px-1 py-0.5 text-[0.92em] text-slate-100">{children}</code>;
+            return <code className="rounded-md bg-black/40 px-1 py-0.5 font-medium text-[0.92em] text-slate-100">{children}</code>;
           }
 
           return <code className={className}>{children}</code>;

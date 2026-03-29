@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useChatStore } from "@/store/chat-store";
+import { useAgentStore } from "@/store/agent-store";
+import { useLockboxStore } from "@/store/lockbox-store";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { MessageContextMenu } from "@/components/chat/context-menu";
 import { MarkdownHelperMenu } from "@/components/markdown/markdown-helper-menu";
@@ -11,14 +13,60 @@ import { applyMarkdownInsertion, type MarkdownHelperAction } from "@/lib/markdow
 import type { ContextActionId, MessagePressContext } from "@/lib/chat/context-actions";
 import { createNoteFromMessageSelection, createNoteFromSingleMessage } from "@/lib/notes/conversion";
 import { renderCanonicalNote } from "@/lib/notes/export-architecture";
+import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
+import { buildAgentExecutionPayload } from "@/lib/runtime/payload-builder";
+import { hasProviderAdapter } from "@/lib/ai/provider-registry";
+import type { AgentProfile } from "@/types/agents";
 import type { ChatMessage } from "@/types/chat";
+import type { AgentInvocationMode } from "@/lib/runtime/types";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fontClassFromAgent = (agent: AgentProfile) => {
+  switch (agent.fontFamily) {
+    case "manrope":
+      return "font-agent-manrope";
+    case "ibm_plex_sans":
+      return "font-agent-ibm";
+    case "space_grotesk":
+      return "font-agent-space";
+    case "merriweather":
+      return "font-agent-merriweather";
+    case "jetbrains_mono":
+      return "font-agent-jetbrains";
+    default:
+      return "font-agent-inter";
+  }
+};
+
+type PendingInvocation = {
+  prompt: string;
+  mode: AgentInvocationMode;
+  outputVisibility: "public" | "ghost";
+  targetMessageId?: number;
+};
 
 export function ChatScreen() {
-  const { messages, addMessage, hydrateMessages, hydrated, hydrating, updateMessage, deleteMessage } = useChatStore();
+  const {
+    messages,
+    addMessage,
+    hydrateMessages,
+    hydrated,
+    hydrating,
+    updateMessage,
+    deleteMessage,
+    activeAgentId,
+    setActiveAgentId,
+  } = useChatStore();
+  const { agents, hydrateAgents } = useAgentStore();
+  const { records, hydrate: hydrateLockbox, revealKey } = useLockboxStore();
+
   const [draft, setDraft] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [agentPending, setAgentPending] = useState(false);
   const [showMarkdownMenu, setShowMarkdownMenu] = useState(false);
+  const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [pendingInvocation, setPendingInvocation] = useState<PendingInvocation | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [menuState, setMenuState] = useState<{
@@ -37,6 +85,11 @@ export function ChatScreen() {
   }, [hydrateMessages, hydrated, hydrating]);
 
   useEffect(() => {
+    void hydrateAgents();
+    hydrateLockbox();
+  }, [hydrateAgents, hydrateLockbox]);
+
+  useEffect(() => {
     if (!listRef.current) return;
     listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, agentPending]);
@@ -45,6 +98,8 @@ export function ChatScreen() {
     () => messages.filter((message) => message.id !== undefined && selectedIds.includes(message.id)),
     [messages, selectedIds],
   );
+
+  const activeAgent = useMemo(() => agents.find((agent) => agent.id === activeAgentId) ?? null, [agents, activeAgentId]);
 
   const selectedCount = selectedMessages.length;
   const hasMessages = messages.length > 0;
@@ -114,6 +169,144 @@ export function ChatScreen() {
     clearSelectionMode();
   };
 
+  const insertAgentResponse = async (
+    agent: AgentProfile,
+    content: string,
+    mode: AgentInvocationMode,
+    outputVisibility: "public" | "ghost",
+    targetMessageId?: number,
+  ) => {
+    const provider = PROVIDER_CATALOG.find((item) => item.id === agent.providerId);
+
+    return addMessage({
+      role: "agent",
+      content,
+      metadata: {
+        provider: provider?.displayName ?? agent.providerId,
+        providerId: agent.providerId,
+        modelId: agent.modelId,
+        invocationMode: mode,
+        agentId: agent.id,
+        agentName: agent.name,
+        streamingMode: agent.streamingMode,
+        outputVisibility,
+        targetMessageId,
+        agentStyle: {
+          avatarImage: agent.avatarImage,
+          avatarShape: agent.avatarShape,
+          fontFamilyClass: fontClassFromAgent(agent),
+          fontColor: agent.fontColor,
+          accentColor: agent.accentColor,
+        },
+      },
+    });
+  };
+
+  const invokeWithAgent = async (
+    agent: AgentProfile,
+    prompt: string,
+    mode: AgentInvocationMode,
+    outputVisibility: "public" | "ghost",
+    targetMessageId?: number,
+  ) => {
+    if (!hasProviderAdapter(agent.providerId)) {
+      await addMessage({ role: "system", content: `Provider adapter for ${agent.providerId} is not available yet.` });
+      return;
+    }
+
+    const provider = PROVIDER_CATALOG.find((item) => item.id === agent.providerId);
+    const model = provider?.models.find((item) => item.modelId === agent.modelId);
+
+    if (!provider || !model) {
+      await addMessage({ role: "system", content: "Selected agent has invalid provider/model metadata." });
+      return;
+    }
+
+    const providerConfig = records.find((record) => record.providerId === agent.providerId);
+    if (!providerConfig) {
+      await addMessage({ role: "system", content: `Configure ${provider.displayName} in API Lockbox before invoking this agent.` });
+      return;
+    }
+
+    const apiKey = await revealKey(agent.providerId);
+
+    const built = buildAgentExecutionPayload({
+      mode,
+      agent,
+      provider,
+      model,
+      providerConfig,
+      providerApiKey: apiKey,
+      prompt,
+      conversation: messages.slice(-8).map((item) => ({ role: item.role === "agent" ? "assistant" : item.role, content: item.content })),
+      streamingMode: agent.streamingMode,
+    });
+
+    if (!built.ok) {
+      await addMessage({ role: "system", content: `${built.message}${built.detail ? ` (${built.detail})` : ""}` });
+      return;
+    }
+
+    const response = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, executionPayload: built.payload }),
+    });
+
+    const payload = (await response.json()) as { content?: string; error?: unknown };
+    if (!response.ok || !payload.content) {
+      await addMessage({ role: "system", content: "Agent request failed. Check Lockbox/provider setup and try again." });
+      return;
+    }
+
+    if (agent.streamingMode === "oneshot") {
+      await insertAgentResponse(agent, payload.content, mode, outputVisibility, targetMessageId);
+      return;
+    }
+
+    const created = await insertAgentResponse(agent, "", mode, outputVisibility, targetMessageId);
+    if (!created?.id) return;
+
+    const chunks =
+      agent.streamingMode === "chunked"
+        ? payload.content.match(/.{1,80}(\s|$)/g) ?? [payload.content]
+        : payload.content.match(/.{1,28}(\s|$)/g) ?? [payload.content];
+
+    let assembled = "";
+    for (const chunk of chunks) {
+      assembled += chunk;
+      await updateMessage(created.id, assembled);
+      await sleep(agent.streamingMode === "chunked" ? 90 : 35);
+    }
+  };
+
+  const runDirectAgentReply = async (prompt: string) => {
+    if (!activeAgent) return;
+    await invokeWithAgent(activeAgent, prompt, "direct_chat", "public");
+  };
+
+  const queueInvocationWithPicker = (invocation: PendingInvocation) => {
+    setPendingInvocation(invocation);
+    setShowAgentPicker(true);
+  };
+
+  const runMessageInvocation = async (
+    message: ChatMessage,
+    mode: AgentInvocationMode,
+    outputVisibility: "public" | "ghost",
+    useDifferentAgent = false,
+  ) => {
+    const prompt = message.content;
+    const targetMessageId = message.id;
+
+    if (!useDifferentAgent && activeAgent) {
+      await invokeWithAgent(activeAgent, prompt, mode, outputVisibility, targetMessageId);
+      return;
+    }
+
+    queueInvocationWithPicker({ prompt, mode, outputVisibility, targetMessageId });
+  };
+
   const sendMessage = async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
@@ -127,39 +320,12 @@ export function ChatScreen() {
 
     await addMessage({ role: "user", content: trimmed });
     setDraft("");
-  };
 
-  const runAgentAction = async (
-    prompt: string,
-    action: "ask_agent" | "summarize" | "extract_tasks" | "explain_code" | "analyze",
-    source?: ChatMessage,
-  ) => {
-    if (agentPending) return;
+    if (!activeAgent || agentPending) return;
+
     setAgentPending(true);
-
     try {
-      const response = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          context: source ? { action, sourceMessageId: source.id } : { action },
-        }),
-      });
-
-      const payload = (await response.json()) as { content?: string; provider?: string; error?: string };
-      const content = payload.content || "I could not generate a response.";
-
-      await addMessage({
-        role: "agent",
-        content,
-        metadata: { provider: payload.provider ?? "unknown" },
-      });
-    } catch {
-      await addMessage({
-        role: "system",
-        content: "Agent request failed. Please try again.",
-      });
+      await runDirectAgentReply(trimmed);
     } finally {
       setAgentPending(false);
     }
@@ -199,23 +365,33 @@ export function ChatScreen() {
       return;
     }
 
-    if (action === "translate") {
-      await addMessage({ role: "system", content: "Translate is planned but not implemented yet." });
+    if (action === "ask_agent") {
+      await runMessageInvocation(message, "long_press_ask", "public", false);
       return;
     }
 
-    if (action === "ask_agent") {
-      await runAgentAction(message.content, "ask_agent", message);
+    if (action === "ask_agent_different") {
+      await runMessageInvocation(message, "long_press_ask", "public", true);
       return;
     }
 
     if (action === "summarize") {
-      await runAgentAction(`Summarize this message:\n\n${message.content}`, "summarize", message);
+      await runMessageInvocation(message, "summarize_message", "ghost", false);
       return;
     }
 
-    if (action === "extract_tasks") {
-      await runAgentAction(`Extract concrete tasks and a checklist from:\n\n${message.content}`, "extract_tasks", message);
+    if (action === "rewrite_message") {
+      await runMessageInvocation(message, "rewrite_message", "public", false);
+      return;
+    }
+
+    if (action === "explain_message") {
+      await runMessageInvocation(message, "explain_message", "public", false);
+      return;
+    }
+
+    if (action === "translate") {
+      await addMessage({ role: "system", content: "Translate is planned but not implemented yet." });
       return;
     }
 
@@ -244,15 +420,6 @@ export function ChatScreen() {
       return;
     }
 
-    if (action === "explain_code" && context.kind === "code") {
-      await runAgentAction(
-        `Explain this ${context.language} code:\n\n\`\`\`${context.language}\n${context.code}\n\`\`\``,
-        "explain_code",
-        message,
-      );
-      return;
-    }
-
     if (action === "open_link" && context.kind === "link") {
       window.open(context.href, "_blank", "noopener,noreferrer");
       return;
@@ -260,11 +427,6 @@ export function ChatScreen() {
 
     if (action === "copy_link" && context.kind === "link") {
       await navigator.clipboard.writeText(context.href);
-      return;
-    }
-
-    if (action === "ask_agent_link" && context.kind === "link") {
-      await runAgentAction(`Analyze this link and explain what I should know before opening it: ${context.href}`, "analyze", message);
       return;
     }
   };
@@ -289,12 +451,6 @@ export function ChatScreen() {
     });
   };
 
-  const placeholder = useMemo(
-    () =>
-      "Start with a thought, clip, or task. Long-press a message to enter multi-select mode.",
-    [],
-  );
-
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
       {selectionMode && (
@@ -313,7 +469,7 @@ export function ChatScreen() {
       >
         {!hasMessages ? (
           <div className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/40 p-4 text-sm text-slate-300">
-            {placeholder}
+            Start with a thought, clip, or task. Long-press a message to enter multi-select mode.
           </div>
         ) : (
           messages.map((message) => (
@@ -342,28 +498,66 @@ export function ChatScreen() {
         {agentPending && (
           <div className="flex justify-start">
             <div className="rounded-2xl border border-violet-300/25 bg-violet-500/16 px-3 py-2 text-xs text-slate-100">
-              Noema Agent is drafting a response...
+              Agent is replying...
             </div>
           </div>
         )}
       </div>
 
       <div className="relative rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
-        <div className="mb-1 flex items-center justify-between px-1 text-[11px] text-slate-400">
-          <span>{editingMessageId !== null ? "Editing message" : "Compose"}</span>
-          {editingMessageId !== null && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className="rounded-full border border-noema-borderSoft bg-slate-900/75 px-3 py-1 text-xs text-slate-200"
+            onClick={() => setShowAgentPicker((current) => !current)}
+          >
+            {activeAgent ? `Agent: ${activeAgent.name}` : "No active agent"}
+          </button>
+          {activeAgent && (
             <button
               type="button"
-              className="rounded-md border border-noema-borderSoft px-2 py-0.5 text-[11px] text-slate-200"
-              onClick={() => {
-                setEditingMessageId(null);
-                setDraft("");
-              }}
+              className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300"
+              onClick={() => setActiveAgentId(null)}
             >
-              Cancel edit
+              Clear
             </button>
           )}
         </div>
+
+        {showAgentPicker && (
+          <div className="mb-2 max-h-36 overflow-y-auto rounded-xl border border-noema-borderSoft bg-slate-950/85 p-2">
+            {pendingInvocation && <p className="mb-1 text-[11px] text-violet-300">Pick an agent for this invocation</p>}
+            {agents.length === 0 ? (
+              <p className="text-xs text-slate-400">No agents yet. Create one in Agent Studio.</p>
+            ) : (
+              <div className="space-y-1">
+                {agents.map((agent) => (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    className={`block w-full rounded-lg px-2 py-1 text-left text-xs ${activeAgentId === agent.id ? "bg-violet-500/20 text-slate-100" : "text-slate-300 hover:bg-white/5"}`}
+                    onClick={async () => {
+                      setActiveAgentId(agent.id ?? null);
+                      setShowAgentPicker(false);
+
+                      if (pendingInvocation) {
+                        setPendingInvocation(null);
+                        setAgentPending(true);
+                        try {
+                          await invokeWithAgent(agent, pendingInvocation.prompt, pendingInvocation.mode, pendingInvocation.outputVisibility, pendingInvocation.targetMessageId);
+                        } finally {
+                          setAgentPending(false);
+                        }
+                      }
+                    }}
+                  >
+                    {agent.name} · {agent.providerId}/{agent.modelId}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-end gap-2">
           <button
@@ -375,20 +569,12 @@ export function ChatScreen() {
             <Icon icon="solar:text-field-focus-bold" className="text-lg" />
           </button>
 
-          <button
-            type="button"
-            aria-label="Attach file"
-            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
-          >
-            <Icon icon="solar:paperclip-bold" className="text-lg" />
-          </button>
-
           <textarea
             ref={inputRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={1}
-            placeholder="Message Noema"
+            placeholder={activeAgent ? `Message ${activeAgent.name}` : "Message Noema"}
             className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -400,16 +586,8 @@ export function ChatScreen() {
 
           <button
             type="button"
-            aria-label="Voice placeholder"
-            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
-          >
-            <Icon icon="solar:microphone-bold" className="text-lg" />
-          </button>
-
-          <button
-            type="button"
             onClick={() => void sendMessage()}
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || agentPending}
             className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {editingMessageId !== null ? "Save" : "Send"}

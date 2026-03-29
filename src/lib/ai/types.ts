@@ -1,6 +1,6 @@
-import type { AgentContext } from "@/types/chat";
+import type { ProviderExecutionPayload } from "@/lib/runtime/types";
 
 export interface AgentProvider {
   name: string;
-  generateResponse: (prompt: string, context?: AgentContext) => Promise<string>;
+  generateResponse: (payload: ProviderExecutionPayload) => Promise<string>;
 }
