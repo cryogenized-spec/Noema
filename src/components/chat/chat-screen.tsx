@@ -15,6 +15,7 @@ import { createNoteFromMessageSelection, createNoteFromSingleMessage } from "@/l
 import { renderCanonicalNote } from "@/lib/notes/export-architecture";
 import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
 import { buildAgentExecutionPayload } from "@/lib/runtime/payload-builder";
+import { createInvocationDescriptor } from "@/lib/runtime/invocation-descriptor";
 import { hasProviderAdapter } from "@/lib/ai/provider-registry";
 import type { AgentProfile } from "@/types/agents";
 import type { ChatMessage } from "@/types/chat";
@@ -55,8 +56,9 @@ export function ChatScreen() {
     hydrating,
     updateMessage,
     deleteMessage,
-    activeAgentId,
-    setActiveAgentId,
+    threads,
+    activeThreadKey,
+    setThreadAgentId,
   } = useChatStore();
   const { agents, hydrateAgents } = useAgentStore();
   const { records, hydrate: hydrateLockbox, revealKey } = useLockboxStore();
@@ -99,6 +101,8 @@ export function ChatScreen() {
     [messages, selectedIds],
   );
 
+  const activeThread = useMemo(() => threads.find((thread) => thread.threadKey === activeThreadKey) ?? null, [threads, activeThreadKey]);
+  const activeAgentId = activeThread?.selectedAgentId ?? null;
   const activeAgent = useMemo(() => agents.find((agent) => agent.id === activeAgentId) ?? null, [agents, activeAgentId]);
 
   const selectedCount = selectedMessages.length;
@@ -189,7 +193,7 @@ export function ChatScreen() {
         agentId: agent.id,
         agentName: agent.name,
         streamingMode: agent.streamingMode,
-        outputVisibility,
+        outputMode: outputVisibility,
         targetMessageId,
         agentStyle: {
           avatarImage: agent.avatarImage,
@@ -231,7 +235,14 @@ export function ChatScreen() {
     const apiKey = await revealKey(agent.providerId);
 
     const built = buildAgentExecutionPayload({
-      mode,
+      invocation: createInvocationDescriptor({
+        threadId: activeThreadKey,
+        sourceMessageId: targetMessageId,
+        sourceMessageContent: prompt,
+        agentId: agent.id ?? -1,
+        mode,
+        outputMode: outputVisibility,
+      }),
       agent,
       provider,
       model,
@@ -517,7 +528,7 @@ export function ChatScreen() {
             <button
               type="button"
               className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300"
-              onClick={() => setActiveAgentId(null)}
+              onClick={() => void setThreadAgentId(activeThreadKey, null)}
             >
               Clear
             </button>
@@ -537,7 +548,7 @@ export function ChatScreen() {
                     type="button"
                     className={`block w-full rounded-lg px-2 py-1 text-left text-xs ${activeAgentId === agent.id ? "bg-violet-500/20 text-slate-100" : "text-slate-300 hover:bg-white/5"}`}
                     onClick={async () => {
-                      setActiveAgentId(agent.id ?? null);
+                      await setThreadAgentId(activeThreadKey, agent.id ?? null);
                       setShowAgentPicker(false);
 
                       if (pendingInvocation) {

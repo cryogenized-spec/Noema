@@ -1,17 +1,20 @@
 import type { ProviderExecutionPayload } from "@/lib/runtime/types";
+import type {
+  ConversationMessageAuthor,
+  ConversationMessageDelivery,
+  ConversationMessageKind,
+  MessageInvocationMetadata,
+} from "@/types/conversation";
 
 export type MessageRole = "user" | "agent" | "system";
 
-export interface ChatMessageMetadata {
+export interface ChatMessageMetadata extends MessageInvocationMetadata {
   provider?: string;
   providerId?: string;
   modelId?: string;
-  invocationMode?: string;
-  agentId?: number;
   agentName?: string;
   streamingMode?: string;
-  outputVisibility?: "public" | "ghost";
-  targetMessageId?: number;
+  outputVisibility?: "public" | "ghost" | "private_draft";
   agentStyle?: {
     avatarImage?: string;
     avatarShape?: "square" | "circle" | "portrait";
@@ -24,9 +27,13 @@ export interface ChatMessageMetadata {
 
 export interface ChatMessage {
   id?: number;
+  threadKey: string;
   role: MessageRole;
+  kind: ConversationMessageKind;
   content: string;
   createdAt: string;
+  author: ConversationMessageAuthor;
+  delivery?: ConversationMessageDelivery;
   metadata?: ChatMessageMetadata;
 }
 

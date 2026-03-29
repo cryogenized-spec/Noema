@@ -8,6 +8,8 @@ export type AgentInvocationMode =
   | "rewrite_message"
   | "explain_message";
 
+export type AgentOutputMode = "public" | "ghost" | "private_draft";
+
 export type AgentRuntimeStreamingMode = "stream" | "chunked" | "oneshot";
 
 export interface RuntimeConversationTurn {
@@ -15,8 +17,17 @@ export interface RuntimeConversationTurn {
   content: string;
 }
 
-export interface AgentExecutionRequest {
+export interface AgentInvocationDescriptor {
+  threadId: string;
+  sourceMessageId?: number;
+  sourceMessageContent?: string;
+  agentId: number;
   mode: AgentInvocationMode;
+  outputMode: AgentOutputMode;
+}
+
+export interface AgentExecutionRequest {
+  invocation: AgentInvocationDescriptor;
   agent: AgentProfile;
   provider: ProviderCatalogEntry;
   model: ProviderModel;
@@ -31,6 +42,8 @@ export interface ProviderExecutionPayload {
   providerId: string;
   modelId: string;
   mode: AgentInvocationMode;
+  outputMode: AgentOutputMode;
+  invocation: AgentInvocationDescriptor;
   streamingMode: AgentRuntimeStreamingMode;
   systemPrompt: string;
   prompt: string;

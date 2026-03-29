@@ -49,9 +49,11 @@ export function buildAgentExecutionPayload(request: AgentExecutionRequest): Agen
   const payload: ProviderExecutionPayload = {
     providerId: request.provider.id,
     modelId: request.model.modelId,
-    mode: request.mode,
+    mode: request.invocation.mode,
+    outputMode: request.invocation.outputMode,
+    invocation: request.invocation,
     streamingMode: request.streamingMode ?? request.agent.streamingMode,
-    systemPrompt: composeRuntimeSystemPrompt(request.agent, request.mode),
+    systemPrompt: composeRuntimeSystemPrompt(request.agent, request.invocation.mode),
     prompt: request.prompt,
     conversation: request.conversation ?? [],
     generationSettings,
