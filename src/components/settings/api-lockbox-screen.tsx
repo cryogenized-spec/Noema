@@ -5,12 +5,14 @@ import Image from "next/image";
 import { Icon } from "@iconify/react";
 import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
 import { useLockboxStore } from "@/store/lockbox-store";
+import { useSttStore } from "@/store/stt-store";
 import type {
   GeminiSafetySettings,
   ProviderGenerationSettings,
   ProviderModel,
   SettingKey,
 } from "@/types/providers";
+import type { OpenAiTranscriptionModel, SttProviderId } from "@/types/stt";
 
 const settingLabels: Record<string, string> = {
   temperature: "Temperature",
@@ -48,6 +50,17 @@ const modelSupportsSetting = (model: ProviderModel, key: string) => {
 
 export function ApiLockboxScreen() {
   const { records, hydrate, hydrated, saveProvider, removeProvider, revealKey } = useLockboxStore();
+  const {
+    provider: sttProvider,
+    openaiModel,
+    language,
+    rememberLastProvider,
+    hydrate: hydrateStt,
+    updateProvider,
+    updateOpenAiModel,
+    updateLanguage,
+    updateRememberLastProvider,
+  } = useSttStore();
   const [openProviderId, setOpenProviderId] = useState<string | null>(PROVIDER_CATALOG[0]?.id ?? null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<
@@ -68,6 +81,10 @@ export function ApiLockboxScreen() {
       hydrate();
     }
   }, [hydrate, hydrated]);
+
+  useEffect(() => {
+    hydrateStt();
+  }, [hydrateStt]);
 
   useEffect(() => {
     const nextDrafts = Object.fromEntries(
@@ -324,6 +341,58 @@ export function ApiLockboxScreen() {
 
       <section className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/35 p-3 text-xs text-slate-400">
         Connectors (future): GitHub, Notion, Drive, and storage integrations will appear here.
+      </section>
+
+      <section className="rounded-xl border border-noema-border bg-noema-panel p-3">
+        <h3 className="text-sm font-semibold text-slate-100">Voice / Speech-to-Text</h3>
+        <p className="mt-1 text-xs text-slate-400">
+          Manual recording flow uses tap-to-start and tap-to-stop, then sends audio to the selected STT provider.
+        </p>
+        <div className="mt-3 space-y-2">
+          <label className="block text-xs text-slate-300">
+            Speech-to-text provider
+            <select
+              value={sttProvider}
+              onChange={(event) => updateProvider(event.target.value as SttProviderId)}
+              className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="openai">OpenAI</option>
+              <option value="google_cloud">Google Cloud (partial)</option>
+              <option value="android_native">Android Native (future placeholder)</option>
+            </select>
+          </label>
+
+          <label className="block text-xs text-slate-300">
+            OpenAI transcription model
+            <select
+              value={openaiModel}
+              onChange={(event) => updateOpenAiModel(event.target.value as OpenAiTranscriptionModel)}
+              className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</option>
+              <option value="gpt-4o-transcribe">gpt-4o-transcribe</option>
+            </select>
+          </label>
+
+          <label className="block text-xs text-slate-300">
+            Preferred language code (optional)
+            <input
+              value={language ?? ""}
+              onChange={(event) => updateLanguage(event.target.value)}
+              placeholder="en, en-US, es..."
+              className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+            />
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={rememberLastProvider}
+              onChange={(event) => updateRememberLastProvider(event.target.checked)}
+            />
+            Remember last selected STT provider
+          </label>
+        </div>
       </section>
     </section>
   );

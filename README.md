@@ -198,10 +198,41 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
 - Persistence is now prepared via Dexie `tasks` table and Zustand `useTaskStore` for hydration + CRUD/status updates.
 - Task markdown uses the same shared markdown storage contract as chat/documents (`TASK_MARKDOWN_CONTRACT` aliases the app markdown contract).
 - Organizer now includes a functional mobile Tasks list with quick filters (`Today`, `Upcoming`, `All`, `Done`, `Archived`), metadata-rich rows, and a floating create-action button.
+- Tasks FAB now opens a capture launcher with:
+  - input method choice: **Type task** or **Speak task**
+  - intake mode choice: **Guided form** or **Conversational**
+  - persisted default-mode preference (`guided_form` by default) and optional “remember last used mode”
+- Guided intake mode now runs an AI-assisted structuring step (runtime-backed with local heuristics fallback), then opens an editable structured draft (title, description, due, duration, priority, status, optional subtasks) before save/discard.
 - Deferred:
   - task detail/intake editor flow beyond quick-create
   - Calendar implementation
   - autonomous agent task workflows
+
+## Voice-to-Text foundation (manual record → stop → transcribe)
+
+- Added reusable manual recording/transcription button (`VoiceCaptureButton`) for input surfaces.
+- Recording behavior is tap-on/tap-off with no automatic speech cutoff:
+  - tap once to start recording
+  - speak as long as needed
+  - tap again to stop and transcribe
+  - transcript is inserted into the invoking input field
+- Added STT provider abstraction under `src/lib/stt` and server route `POST /api/stt/transcribe`.
+- Providers in this phase:
+  - `openai` (implemented)
+  - `google_cloud` (adapter placeholder)
+  - `android_native` (future-native placeholder)
+- OpenAI STT models exposed exactly as:
+  - `gpt-4o-mini-transcribe` (default)
+  - `gpt-4o-transcribe`
+- Added STT preferences in Settings:
+  - provider selection
+  - OpenAI transcription model
+  - optional preferred language code
+  - remember-last-provider toggle
+- Deferred:
+  - realtime streaming speech recognition
+  - TTS / voice playback
+  - Android native SpeechRecognizer runtime integration
 
 
 ## Agent Studio (Stage 8 foundation)

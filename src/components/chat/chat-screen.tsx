@@ -9,6 +9,7 @@ import { MessageBubble } from "@/components/chat/message-bubble";
 import { MessageContextMenu } from "@/components/chat/context-menu";
 import { MarkdownHelperMenu } from "@/components/markdown/markdown-helper-menu";
 import { SelectionActionBar } from "@/components/chat/selection-action-bar";
+import { VoiceCaptureButton } from "@/components/voice/voice-capture-button";
 import { applyMarkdownInsertion, type MarkdownHelperAction } from "@/lib/markdown/authoring";
 import type { ContextActionId, MessagePressContext } from "@/lib/chat/context-actions";
 import { createNoteFromMessageSelection, createNoteFromSingleMessage } from "@/lib/notes/conversion";
@@ -592,6 +593,14 @@ export function ChatScreen() {
                 event.preventDefault();
                 void sendMessage();
               }
+            }}
+          />
+
+          <VoiceCaptureButton
+            compact
+            onTranscript={(text) => setDraft((current) => `${current} ${text}`.trim())}
+            onError={(error) => {
+              void addMessage({ role: "system", content: `Voice capture failed: ${error.message}` });
             }}
           />
 

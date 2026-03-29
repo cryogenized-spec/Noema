@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useTaskStore } from "@/store/task-store";
-import type { TaskPriority, TaskRecord, TaskStatus } from "@/types/tasks";
+import { buildGuidedIntakeDraft, type GuidedClarification, type GuidedIntakeDraft } from "@/lib/tasks/guided-intake";
+import { TasksGuidedIntakeSheet } from "@/components/organizer/tasks-guided-intake-sheet";
+import { VoiceCaptureButton } from "@/components/voice/voice-capture-button";
+import type { TaskCaptureMethod, TaskIntakeMode, TaskPriority, TaskRecord, TaskStatus } from "@/types/tasks";
 
 type TaskQuickFilter = "today" | "upcoming" | "all" | "done" | "archived";
 
@@ -78,9 +81,26 @@ const buildSubtaskProgress = (task: TaskRecord) => {
 };
 
 export function TasksListScreen() {
-  const { tasks, hydrated, hydrating, hydrateTasks, createTask } = useTaskStore();
+  const {
+    tasks,
+    hydrated,
+    hydrating,
+    hydrateTasks,
+    createTask,
+    defaultIntakeMode,
+    rememberLastUsedMode,
+    setDefaultIntakeMode,
+    setRememberLastUsedMode,
+  } = useTaskStore();
   const [activeFilter, setActiveFilter] = useState<TaskQuickFilter>("today");
   const [notice, setNotice] = useState("");
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [captureMethod, setCaptureMethod] = useState<TaskCaptureMethod>("type");
+  const [selectedMode, setSelectedMode] = useState<TaskIntakeMode>("guided_form");
+  const [intakeDraft, setIntakeDraft] = useState("");
+  const [guidedDraft, setGuidedDraft] = useState<GuidedIntakeDraft | null>(null);
+  const [guidedClarifications, setGuidedClarifications] = useState<GuidedClarification[]>([]);
+  const [guidedLoading, setGuidedLoading] = useState(false);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -94,6 +114,12 @@ export function TasksListScreen() {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
+  useEffect(() => {
+    if (launcherOpen) {
+      setSelectedMode(defaultIntakeMode);
+    }
+  }, [launcherOpen, defaultIntakeMode]);
+
   const filteredTasks = useMemo(() => {
     const sorted = sortTasks(tasks);
     if (activeFilter === "today") return sorted.filter((task) => task.status !== "archived" && task.status !== "done" && isToday(task.dueAt));
@@ -105,16 +131,52 @@ export function TasksListScreen() {
 
   const handleCreate = async () => {
     const taskNumber = tasks.length + 1;
+    const trimmedDraft = intakeDraft.trim();
+    const titleFromDraft = trimmedDraft.split("\n").find((line) => line.trim().length > 0)?.trim();
+    const sourceType = captureMethod === "voice" ? "voice_capture" : selectedMode === "guided_form" ? "manual" : "ai_intake";
+
     await createTask({
-      title: `Task ${taskNumber}`,
-      descriptionMarkdown: "",
+      title: titleFromDraft || `Task ${taskNumber}`,
+      descriptionMarkdown: trimmedDraft,
       status: "inbox",
       priority: "normal",
-      sourceType: "manual",
+      sourceType,
       tags: ["task"],
+      intakeTranscript: captureMethod === "voice" ? trimmedDraft : undefined,
+      aiAssisted: selectedMode === "guided_form",
     });
+
+    if (rememberLastUsedMode) {
+      setDefaultIntakeMode(selectedMode);
+    }
     setActiveFilter("all");
-    setNotice("Task created. Task intake/editor flow comes next.");
+    setLauncherOpen(false);
+    setCaptureMethod("type");
+    setIntakeDraft("");
+    setNotice(selectedMode === "guided_form" ? "Task captured in guided mode." : "Task captured in conversational mode.");
+  };
+
+  const beginGuidedFlow = async () => {
+    const trimmedDraft = intakeDraft.trim();
+    if (!trimmedDraft) {
+      setNotice("Add a rough request first so Noema can structure the task.");
+      return;
+    }
+    setGuidedLoading(true);
+    try {
+      const result = await buildGuidedIntakeDraft(trimmedDraft);
+      setGuidedDraft(result.draft);
+      setGuidedClarifications(result.clarifications);
+      setLauncherOpen(false);
+    } finally {
+      setGuidedLoading(false);
+    }
+  };
+
+  const openLauncher = () => {
+    setSelectedMode(defaultIntakeMode);
+    setCaptureMethod("type");
+    setLauncherOpen(true);
   };
 
   return (
@@ -190,12 +252,166 @@ export function TasksListScreen() {
       <button
         type="button"
         aria-label="Create task"
-        onClick={() => void handleCreate()}
+        onClick={openLauncher}
         className="absolute bottom-0 right-1 inline-flex h-12 w-12 items-center justify-center rounded-full border border-violet-300/30 bg-violet-500/25 text-violet-100 shadow-glass"
       >
         <Icon icon="solar:add-circle-bold" className="text-2xl" />
       </button>
+
+      {launcherOpen && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/45" onClick={() => setLauncherOpen(false)}>
+          <div className="w-full rounded-t-2xl border border-noema-border bg-noema-panel p-3 pb-6 shadow-glass" onClick={(event) => event.stopPropagation()}>
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-600/80" />
+            <div className="mb-2 flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-100">Task capture</p>
+                <p className="text-xs text-slate-400">Choose input method and intake mode</p>
+              </div>
+              <button type="button" onClick={() => setLauncherOpen(false)} className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300">
+                Cancel
+              </button>
+            </div>
+
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCaptureMethod("type")}
+                className={`rounded-lg border px-3 py-2 text-left text-xs ${captureMethod === "type" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+              >
+                <span className="block text-[11px] uppercase text-slate-400">Input</span>
+                Type task
+              </button>
+              <button
+                type="button"
+                onClick={() => setCaptureMethod("voice")}
+                className={`rounded-lg border px-3 py-2 text-left text-xs ${captureMethod === "voice" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+              >
+                <span className="block text-[11px] uppercase text-slate-400">Input</span>
+                Speak task
+              </button>
+            </div>
+
+            <div className="mb-3 rounded-xl border border-noema-borderSoft bg-slate-950/70 p-2">
+              <p className="mb-2 text-[11px] font-medium text-slate-200">Intake mode</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMode("guided_form")}
+                  className={`rounded-lg border px-2 py-2 text-left text-xs ${selectedMode === "guided_form" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+                >
+                  Guided form
+                  <span className="mt-1 block text-[11px] text-slate-400">Structured fields + AI-ready suggestions</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMode("conversational")}
+                  className={`rounded-lg border px-2 py-2 text-left text-xs ${selectedMode === "conversational" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+                >
+                  Conversational
+                  <span className="mt-1 block text-[11px] text-slate-400">Mini prompt-like intake flow</span>
+                </button>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-300">
+                <button type="button" onClick={() => setDefaultIntakeMode(selectedMode)} className="rounded-md border border-noema-borderSoft px-2 py-1">
+                  Set as default
+                </button>
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={rememberLastUsedMode}
+                    onChange={(event) => setRememberLastUsedMode(event.target.checked)}
+                  />
+                  Remember last used mode
+                </label>
+              </div>
+            </div>
+
+            <textarea
+              value={intakeDraft}
+              onChange={(event) => setIntakeDraft(event.target.value)}
+              placeholder={captureMethod === "voice" ? "Voice transcript appears here…" : "Type your rough task request…"}
+              className="mb-3 h-24 w-full resize-none rounded-xl border border-noema-borderSoft bg-slate-950/75 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+            />
+
+            {captureMethod === "voice" && (
+              <div className="mb-3">
+                <VoiceCaptureButton
+                  compact
+                  className="w-full justify-center"
+                  onTranscript={(text) => {
+                    setIntakeDraft((current) => `${current} ${text}`.trim());
+                    setNotice("Voice transcript inserted.");
+                  }}
+                  onError={(error) => setNotice(error.message)}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setLauncherOpen(false);
+                }}
+                className="rounded-lg border border-noema-borderSoft px-3 py-2 text-xs text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={guidedLoading}
+                onClick={() => {
+                  if (selectedMode === "guided_form") {
+                    void beginGuidedFlow();
+                  } else {
+                    void handleCreate();
+                  }
+                }}
+                className="rounded-lg border border-violet-300/35 bg-violet-500/20 px-3 py-2 text-xs font-medium text-violet-100 disabled:opacity-50"
+              >
+                {selectedMode === "guided_form" ? (guidedLoading ? "Structuring..." : "Continue to guided draft") : "Continue"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {guidedDraft && (
+        <TasksGuidedIntakeSheet
+          draft={guidedDraft}
+          clarifications={guidedClarifications}
+          onCancel={() => {
+            setGuidedDraft(null);
+            setGuidedClarifications([]);
+          }}
+          onSave={async (draft) => {
+            await createTask({
+              title: draft.title.trim() || "Untitled task",
+              descriptionMarkdown: draft.descriptionMarkdown,
+              dueAt: draft.dueAt,
+              estimatedDurationMinutes: draft.estimatedDurationMinutes,
+              priority: draft.priority,
+              status: draft.status,
+              subtasks: draft.includeSubtasks
+                ? draft.suggestedSubtasks
+                    .map((subtask, index) => ({ ...subtask, order: index, title: subtask.title.trim() }))
+                    .filter((subtask) => subtask.title.length > 0)
+                : undefined,
+              sourceType: "ai_intake",
+              aiAssisted: true,
+              tags: ["task"],
+            });
+            if (rememberLastUsedMode) {
+              setDefaultIntakeMode("guided_form");
+            }
+            setGuidedDraft(null);
+            setGuidedClarifications([]);
+            setIntakeDraft("");
+            setActiveFilter("all");
+            setNotice("Guided task draft saved.");
+          }}
+        />
+      )}
     </section>
   );
 }
-

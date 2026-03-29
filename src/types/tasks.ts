@@ -1,5 +1,7 @@
 export type TaskStatus = "inbox" | "todo" | "doing" | "done" | "archived";
 export type TaskPriority = "low" | "normal" | "high" | "urgent";
+export type TaskIntakeMode = "guided_form" | "conversational";
+export type TaskCaptureMethod = "type" | "voice";
 export type TaskSourceType =
   | "manual"
   | "voice_capture"
@@ -62,4 +64,3 @@ export interface CreateTaskInput {
   aiClarificationSummary?: string;
   subtasks?: TaskSubtask[];
 }
-

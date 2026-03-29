@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { db } from "@/lib/db/client";
 import { createTaskRecord } from "@/lib/tasks/contract";
 import { normalizeMarkdownSource } from "@/lib/markdown/contract";
-import type { CreateTaskInput, TaskRecord, TaskStatus } from "@/types/tasks";
+import type { CreateTaskInput, TaskIntakeMode, TaskRecord, TaskStatus } from "@/types/tasks";
 
 const sortTasks = (tasks: TaskRecord[]) =>
   [...tasks].sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || b.updatedAt.localeCompare(a.updatedAt));
@@ -13,13 +13,20 @@ interface TaskState {
   tasks: TaskRecord[];
   hydrated: boolean;
   hydrating: boolean;
+  defaultIntakeMode: TaskIntakeMode;
+  rememberLastUsedMode: boolean;
   hydrateTasks: () => Promise<void>;
   createTask: (input: CreateTaskInput) => Promise<TaskRecord>;
   updateTask: (id: number, patch: Partial<CreateTaskInput>) => Promise<void>;
   setTaskStatus: (id: number, status: TaskStatus) => Promise<void>;
   pinTask: (id: number, isPinned: boolean) => Promise<void>;
   deleteTask: (id: number) => Promise<void>;
+  setDefaultIntakeMode: (mode: TaskIntakeMode) => void;
+  setRememberLastUsedMode: (enabled: boolean) => void;
 }
+
+const TASK_DEFAULT_INTAKE_MODE_KEY = "noema-task-default-intake-mode";
+const TASK_REMEMBER_LAST_MODE_KEY = "noema-task-remember-last-mode";
 
 const normalizePatch = (patch: Partial<CreateTaskInput>, current: TaskRecord) => {
   const nextStatus = patch.status ?? current.status;
@@ -51,12 +58,23 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   hydrated: false,
   hydrating: false,
+  defaultIntakeMode: "guided_form",
+  rememberLastUsedMode: false,
   hydrateTasks: async () => {
     if (get().hydrating || get().hydrated) return;
     set({ hydrating: true });
     try {
       const tasks = await db.tasks.toArray();
-      set({ tasks: sortTasks(tasks), hydrated: true });
+      let defaultIntakeMode: TaskIntakeMode = "guided_form";
+      let rememberLastUsedMode = false;
+      if (typeof window !== "undefined") {
+        const storedMode = window.localStorage.getItem(TASK_DEFAULT_INTAKE_MODE_KEY);
+        if (storedMode === "guided_form" || storedMode === "conversational") {
+          defaultIntakeMode = storedMode;
+        }
+        rememberLastUsedMode = window.localStorage.getItem(TASK_REMEMBER_LAST_MODE_KEY) === "1";
+      }
+      set({ tasks: sortTasks(tasks), defaultIntakeMode, rememberLastUsedMode, hydrated: true });
     } finally {
       set({ hydrating: false });
     }
@@ -97,5 +115,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     await db.tasks.delete(id);
     set((state) => ({ tasks: state.tasks.filter((task) => task.id !== id) }));
   },
+  setDefaultIntakeMode: (mode) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TASK_DEFAULT_INTAKE_MODE_KEY, mode);
+    }
+    set({ defaultIntakeMode: mode });
+  },
+  setRememberLastUsedMode: (enabled) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TASK_REMEMBER_LAST_MODE_KEY, enabled ? "1" : "0");
+    }
+    set({ rememberLastUsedMode: enabled });
+  },
 }));
-
