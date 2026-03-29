@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DocumentsListScreen } from "@/components/organizer/documents-list-screen";
+import { TasksListScreen } from "@/components/organizer/tasks-list-screen";
 import type { OrganizerModule } from "@/types/organizer";
 
 const modules: OrganizerModule[] = ["documents", "tasks", "calendar"];
@@ -40,6 +41,8 @@ export function OrganizerScreen() {
       <div className="min-h-0 flex-1">
         {activeModule === "documents" ? (
           <DocumentsListScreen />
+        ) : activeModule === "tasks" ? (
+          <TasksListScreen />
         ) : (
           <div className="flex h-full min-h-56 items-center justify-center rounded-2xl border border-dashed border-noema-borderSoft bg-noema-panel px-5 text-center">
             <div>

@@ -186,6 +186,23 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
   - full export/import file picker + vault packaging flow
   - Tasks/Calendar implementation
 
+## Organizer Tasks (foundation)
+
+- Added a canonical local-first **TaskRecord** model with:
+  - status workflow: `inbox | todo | doing | done | archived`
+  - priority: `low | normal | high | urgent`
+  - markdown-native description (`descriptionMarkdown`)
+  - due/completion/tags/folder/pin metadata
+  - intake/source fields for manual/voice/AI/message/document conversion paths
+- Added subtask-ready structure (`subtasks`) as a clean extension point without introducing dependency graphs yet.
+- Persistence is now prepared via Dexie `tasks` table and Zustand `useTaskStore` for hydration + CRUD/status updates.
+- Task markdown uses the same shared markdown storage contract as chat/documents (`TASK_MARKDOWN_CONTRACT` aliases the app markdown contract).
+- Organizer now includes a functional mobile Tasks list with quick filters (`Today`, `Upcoming`, `All`, `Done`, `Archived`), metadata-rich rows, and a floating create-action button.
+- Deferred:
+  - task detail/intake editor flow beyond quick-create
+  - Calendar implementation
+  - autonomous agent task workflows
+
 
 ## Agent Studio (Stage 8 foundation)
 
