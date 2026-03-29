@@ -9,7 +9,7 @@ export interface ChatMessage {
 }
 
 export interface AgentContext {
-  action?: "ask_agent" | "summarize" | "analyze";
+  action?: "ask_agent" | "summarize" | "analyze" | "extract_tasks" | "explain_code";
   sourceMessageId?: number;
 }
 

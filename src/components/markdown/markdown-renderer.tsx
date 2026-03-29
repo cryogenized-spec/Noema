@@ -37,7 +37,7 @@ function CodeFence({ children, className }: CodeFenceProps) {
   };
 
   return (
-    <div className="my-2 overflow-hidden rounded-xl border border-noema-border bg-[#0a1227]/95 shadow-[0_8px_24px_rgba(2,6,23,0.45)]">
+    <div className="my-2 overflow-hidden rounded-xl border border-noema-border bg-[#0a1227]/95 shadow-[0_10px_24px_rgba(2,6,23,0.48)]">
       <div className="flex items-center justify-between border-b border-noema-borderSoft bg-slate-900/80 px-3 py-2 text-[11px] uppercase tracking-wide text-slate-300">
         <span className="rounded-md border border-noema-borderSoft bg-slate-800/80 px-2 py-0.5 font-medium text-slate-200">
           {language}
@@ -51,7 +51,12 @@ function CodeFence({ children, className }: CodeFenceProps) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 text-xs leading-relaxed sm:text-sm">
+      <pre
+        className="overflow-x-auto p-3 text-[12px] leading-relaxed sm:text-sm"
+        data-noema-code="true"
+        data-code-language={language}
+        data-code-value={codeValue}
+      >
         <code className={className}>{children}</code>
       </pre>
     </div>
@@ -71,7 +76,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         h1: ({ children }) => <h1 className="mb-2 mt-1 text-lg font-semibold text-slate-100">{children}</h1>,
         h2: ({ children }) => <h2 className="mb-2 mt-1 text-base font-semibold text-slate-100">{children}</h2>,
         h3: ({ children }) => <h3 className="mb-1 mt-1 text-sm font-semibold text-slate-100">{children}</h3>,
-        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-slate-100">{children}</p>,
+        p: ({ children }) => <p className="mb-2 last:mb-0 leading-7 text-slate-100">{children}</p>,
         blockquote: ({ children }) => (
           <blockquote className="my-2 border-l-2 border-violet-300/40 bg-slate-900/35 px-3 py-1 text-slate-300">
             {children}
@@ -83,7 +88,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         a: ({ children, href }) => (
           <a
             href={href}
-            className="text-violet-300 underline underline-offset-2"
+            className="text-violet-300 underline decoration-violet-300/70 underline-offset-2 break-words"
             target={href?.startsWith("http") ? "_blank" : undefined}
             rel={href?.startsWith("http") ? "noreferrer" : undefined}
           >

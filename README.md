@@ -11,7 +11,8 @@ This repository contains the **first foundational vertical slice**: a mobile-fir
 - Top bar + bottom tab navigation
 - Functional Chat tab
   - message list + composer
-  - long-press context menu (Copy, Ask Agent, Translate placeholder)
+  - long-press multi-select mode + bulk actions
+  - bottom-sheet message actions (via message action button / desktop context menu)
   - markdown rendering with highlighted fenced code blocks
 - Local-first persistence using Dexie (IndexedDB) + Zustand
 - `/api/agent` route with provider adapter
@@ -143,6 +144,28 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
 - current syntax support: headings, emphasis, strikethrough, blockquotes, ordered/unordered/task lists, links, tables, inline code, fenced code blocks, and horizontal rules
 - raw HTML rendering is disabled
 - Obsidian-style `[[wikilink]]` and `![[embed]]` tokens are transformed to safe internal link tokens for forward compatibility
+
+
+## Interaction model (stabilization pass)
+
+- **Long-press** enters multi-select mode on chat messages.
+- While multi-select is active:
+  - tap messages to toggle selection
+  - use the selection action bar for copy/delete/convert-to-note
+- Message-specific action sheet is available from the message actions button (`...`) and desktop right-click, avoiding long-press gesture conflicts on mobile.
+
+## Markdown + notes architecture
+
+- Markdown is the canonical content format across chat and note conversion flows.
+- Supported markdown in renderer includes headings, quotes, lists, links, tables, inline/fenced code, and horizontal rules.
+- Note conversion utilities now produce canonical markdown notes with frontmatter prep (`title`, `created`, `updated`, `tags`) for Obsidian-friendly export preparation.
+- Export is currently an architecture layer (planned files/paths in `Notes/` + `Assets/`), not a full vault filesystem writer yet.
+
+## Deferred in current pass
+
+- Real translation for single/bulk actions
+- Full notes UI/editor and vault file writer
+- Attachment binary export pipeline (only naming/embed conventions are prepared)
 
 ## License
 

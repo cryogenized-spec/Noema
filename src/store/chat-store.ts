@@ -18,6 +18,8 @@ interface ChatState {
   hydrating: boolean;
   hydrateMessages: () => Promise<void>;
   addMessage: (message: Omit<ChatMessage, "id" | "createdAt"> & { createdAt?: string }) => Promise<ChatMessage>;
+  updateMessage: (id: number, content: string) => Promise<void>;
+  deleteMessage: (id: number) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -54,5 +56,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
 
     return persisted;
+  },
+  updateMessage: async (id, content) => {
+    const normalized = normalizeMarkdownSource(content);
+    await db.messages.update(id, { content: normalized });
+    set((state) => ({
+      messages: sortMessages(
+        state.messages.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                content: normalized,
+              }
+            : item,
+        ),
+      ),
+    }));
+  },
+  deleteMessage: async (id) => {
+    await db.messages.delete(id);
+    set((state) => ({ messages: state.messages.filter((item) => item.id !== id) }));
   },
 }));

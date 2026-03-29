@@ -6,20 +6,26 @@ import { useChatStore } from "@/store/chat-store";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { MessageContextMenu } from "@/components/chat/context-menu";
 import { MarkdownHelperMenu } from "@/components/markdown/markdown-helper-menu";
+import { SelectionActionBar } from "@/components/chat/selection-action-bar";
 import { applyMarkdownInsertion, type MarkdownHelperAction } from "@/lib/markdown/authoring";
+import type { ContextActionId, MessagePressContext } from "@/lib/chat/context-actions";
+import { createNoteFromMessageSelection, createNoteFromSingleMessage } from "@/lib/notes/conversion";
+import { renderCanonicalNote } from "@/lib/notes/export-architecture";
 import type { ChatMessage } from "@/types/chat";
 
 export function ChatScreen() {
-  const { messages, addMessage, hydrateMessages, hydrated, hydrating } = useChatStore();
+  const { messages, addMessage, hydrateMessages, hydrated, hydrating, updateMessage, deleteMessage } = useChatStore();
   const [draft, setDraft] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [agentPending, setAgentPending] = useState(false);
   const [showMarkdownMenu, setShowMarkdownMenu] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [menuState, setMenuState] = useState<{
     visible: boolean;
-    x: number;
-    y: number;
     message: ChatMessage | null;
-  }>({ visible: false, x: 0, y: 0, message: null });
+    context: MessagePressContext | null;
+  }>({ visible: false, message: null, context: null });
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -35,16 +41,99 @@ export function ChatScreen() {
     listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, agentPending]);
 
+  const selectedMessages = useMemo(
+    () => messages.filter((message) => message.id !== undefined && selectedIds.includes(message.id)),
+    [messages, selectedIds],
+  );
+
+  const selectedCount = selectedMessages.length;
   const hasMessages = messages.length > 0;
+
+  const clearSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds([]);
+  };
+
+  const toggleSelectMessage = (message: ChatMessage) => {
+    if (message.id === undefined) return;
+    setSelectedIds((current) =>
+      current.includes(message.id as number) ? current.filter((id) => id !== message.id) : [...current, message.id as number],
+    );
+  };
+
+  useEffect(() => {
+    if (selectionMode && selectedIds.length === 0) {
+      setSelectionMode(false);
+    }
+  }, [selectedIds.length, selectionMode]);
+
+  const enterSelectionMode = (message: ChatMessage) => {
+    if (message.id === undefined) return;
+    setMenuState({ visible: false, message: null, context: null });
+    setSelectionMode(true);
+    setSelectedIds((current) => (current.includes(message.id as number) ? current : [...current, message.id as number]));
+  };
+
+  const copySelectedMessages = async () => {
+    const payload = selectedMessages
+      .map((message) => `[${message.role.toUpperCase()} ${new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}]\n${message.content}`)
+      .join("\n\n---\n\n");
+    await navigator.clipboard.writeText(payload);
+    clearSelectionMode();
+  };
+
+  const deleteSelectedMessages = async () => {
+    const ownMessages = selectedMessages.filter((message) => message.role === "user" && message.id !== undefined);
+    const skipped = selectedMessages.length - ownMessages.length;
+
+    for (const message of ownMessages) {
+      if (message.id !== undefined) {
+        await deleteMessage(message.id);
+      }
+    }
+
+    if (skipped > 0) {
+      await addMessage({
+        role: "system",
+        content: `Deleted ${ownMessages.length} own message(s). Skipped ${skipped} non-user message(s).`,
+      });
+    }
+
+    clearSelectionMode();
+  };
+
+  const convertSelectedToNote = async () => {
+    const note = createNoteFromMessageSelection(selectedMessages);
+    const rendered = renderCanonicalNote(note);
+
+    await navigator.clipboard.writeText(rendered.markdown);
+    await addMessage({
+      role: "system",
+      content: `Converted selection to Obsidian-ready note draft (${rendered.filename}) and copied it to clipboard.`,
+    });
+    clearSelectionMode();
+  };
 
   const sendMessage = async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
+
+    if (editingMessageId !== null) {
+      await updateMessage(editingMessageId, trimmed);
+      setEditingMessageId(null);
+      setDraft("");
+      return;
+    }
+
     await addMessage({ role: "user", content: trimmed });
     setDraft("");
   };
 
-  const askAgent = async (sourceMessage: ChatMessage) => {
+  const runAgentAction = async (
+    prompt: string,
+    action: "ask_agent" | "summarize" | "extract_tasks" | "explain_code" | "analyze",
+    source?: ChatMessage,
+  ) => {
     if (agentPending) return;
     setAgentPending(true);
 
@@ -53,8 +142,8 @@ export function ChatScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: sourceMessage.content,
-          context: { action: "ask_agent", sourceMessageId: sourceMessage.id },
+          prompt,
+          context: source ? { action, sourceMessageId: source.id } : { action },
         }),
       });
 
@@ -76,6 +165,109 @@ export function ChatScreen() {
     }
   };
 
+  const handleContextAction = async (action: ContextActionId, message: ChatMessage, context: MessagePressContext) => {
+    if (action === "copy") {
+      await navigator.clipboard.writeText(message.content);
+      return;
+    }
+
+    if (action === "reply_quote") {
+      const next = `> ${message.content.replace(/\n/g, "\n> ")}\n\n`;
+      setDraft((current) => (current ? `${current}\n\n${next}` : next));
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+
+    if (action === "share") {
+      if (navigator.share) {
+        await navigator.share({ text: message.content });
+      } else {
+        await navigator.clipboard.writeText(message.content);
+        await addMessage({ role: "system", content: "Share is unavailable here, so content was copied instead." });
+      }
+      return;
+    }
+
+    if (action === "convert_note") {
+      const note = createNoteFromSingleMessage(message);
+      const rendered = renderCanonicalNote(note);
+      await navigator.clipboard.writeText(rendered.markdown);
+      await addMessage({
+        role: "system",
+        content: `Converted message to Obsidian-ready note draft (${rendered.filename}) and copied it to clipboard.`,
+      });
+      return;
+    }
+
+    if (action === "translate") {
+      await addMessage({ role: "system", content: "Translate is planned but not implemented yet." });
+      return;
+    }
+
+    if (action === "ask_agent") {
+      await runAgentAction(message.content, "ask_agent", message);
+      return;
+    }
+
+    if (action === "summarize") {
+      await runAgentAction(`Summarize this message:\n\n${message.content}`, "summarize", message);
+      return;
+    }
+
+    if (action === "extract_tasks") {
+      await runAgentAction(`Extract concrete tasks and a checklist from:\n\n${message.content}`, "extract_tasks", message);
+      return;
+    }
+
+    if (action === "edit") {
+      if (!message.id) return;
+      setEditingMessageId(message.id);
+      setDraft(message.content);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+
+    if (action === "delete") {
+      if (!message.id) return;
+      await deleteMessage(message.id);
+      return;
+    }
+
+    if (action === "copy_code" && context.kind === "code") {
+      await navigator.clipboard.writeText(context.code);
+      return;
+    }
+
+    if (action === "copy_markdown" && context.kind === "code") {
+      const fenced = `\`\`\`${context.language}\n${context.code}\n\`\`\``;
+      await navigator.clipboard.writeText(fenced);
+      return;
+    }
+
+    if (action === "explain_code" && context.kind === "code") {
+      await runAgentAction(
+        `Explain this ${context.language} code:\n\n\`\`\`${context.language}\n${context.code}\n\`\`\``,
+        "explain_code",
+        message,
+      );
+      return;
+    }
+
+    if (action === "open_link" && context.kind === "link") {
+      window.open(context.href, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (action === "copy_link" && context.kind === "link") {
+      await navigator.clipboard.writeText(context.href);
+      return;
+    }
+
+    if (action === "ask_agent_link" && context.kind === "link") {
+      await runAgentAction(`Analyze this link and explain what I should know before opening it: ${context.href}`, "analyze", message);
+      return;
+    }
+  };
 
   const applyHelper = (action: MarkdownHelperAction) => {
     const input = inputRef.current;
@@ -99,12 +291,22 @@ export function ChatScreen() {
 
   const placeholder = useMemo(
     () =>
-      "Start with a thought, clip, or task. Long-press any message to Ask Agent for a focused next step.",
+      "Start with a thought, clip, or task. Long-press a message to enter multi-select mode.",
     [],
   );
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
+      {selectionMode && (
+        <SelectionActionBar
+          selectedCount={selectedCount}
+          onClose={clearSelectionMode}
+          onCopy={copySelectedMessages}
+          onDelete={deleteSelectedMessages}
+          onConvertToNote={convertSelectedToNote}
+        />
+      )}
+
       <div
         ref={listRef}
         className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-3"
@@ -118,9 +320,21 @@ export function ChatScreen() {
             <MessageBubble
               key={message.id ?? `${message.role}-${message.createdAt}`}
               message={message}
-              onLongPress={(msg, x, y) =>
-                setMenuState({ visible: true, message: msg, x, y })
-              }
+              selectionMode={selectionMode}
+              selected={message.id !== undefined ? selectedIds.includes(message.id) : false}
+              isContextActive={menuState.visible && menuState.message?.id === message.id}
+              onToggleSelect={toggleSelectMessage}
+              onLongPress={(msg) => {
+                if (selectionMode) {
+                  toggleSelectMessage(msg);
+                  return;
+                }
+                enterSelectionMode(msg);
+              }}
+              onContextActionOpen={(msg, context) => {
+                if (selectionMode) return;
+                setMenuState({ visible: true, message: msg, context });
+              }}
             />
           ))
         )}
@@ -135,6 +349,22 @@ export function ChatScreen() {
       </div>
 
       <div className="relative rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
+        <div className="mb-1 flex items-center justify-between px-1 text-[11px] text-slate-400">
+          <span>{editingMessageId !== null ? "Editing message" : "Compose"}</span>
+          {editingMessageId !== null && (
+            <button
+              type="button"
+              className="rounded-md border border-noema-borderSoft px-2 py-0.5 text-[11px] text-slate-200"
+              onClick={() => {
+                setEditingMessageId(null);
+                setDraft("");
+              }}
+            >
+              Cancel edit
+            </button>
+          )}
+        </div>
+
         <div className="flex items-end gap-2">
           <button
             type="button"
@@ -182,19 +412,19 @@ export function ChatScreen() {
             disabled={!draft.trim()}
             className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Send
+            {editingMessageId !== null ? "Save" : "Send"}
           </button>
         </div>
         {showMarkdownMenu && <MarkdownHelperMenu onAction={applyHelper} />}
       </div>
 
       <MessageContextMenu
-        visible={menuState.visible}
-        position={{ x: menuState.x, y: menuState.y }}
+        visible={menuState.visible && !selectionMode}
         message={menuState.message}
+        context={menuState.context}
         busy={agentPending}
-        onClose={() => setMenuState({ visible: false, x: 0, y: 0, message: null })}
-        onAskAgent={askAgent}
+        onClose={() => setMenuState({ visible: false, message: null, context: null })}
+        onAction={handleContextAction}
       />
     </section>
   );
