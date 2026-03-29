@@ -3,6 +3,8 @@ export type DocumentSourceType = "manual" | "chat_conversion" | "ocr" | "import"
 export interface DocumentSourceRef {
   chatMessageIds?: number[];
   ocrJobId?: string;
+  ocrEngine?: string;
+  ocrCapturedAt?: string;
   importId?: string;
   [key: string]: string | number[] | undefined;
 }

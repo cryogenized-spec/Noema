@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@/types/chat";
 import type { CreateDocumentInput } from "@/types/documents";
 import { normalizeWikilinks } from "@/lib/notes/conversion";
+import { prepareOcrDocumentDraft } from "@/lib/documents/ocr-intake";
 
 const truncate = (value: string, max = 72) => (value.length <= max ? value : `${value.slice(0, max).trimEnd()}…`);
 
@@ -32,12 +33,12 @@ export function prepareDocumentFromMessageSelection(messages: ChatMessage[], tit
   };
 }
 
-export function prepareDocumentFromOcrText(text: string, sourceRef?: { ocrJobId?: string }): CreateDocumentInput {
-  return {
-    title: "OCR Capture",
-    bodyMarkdown: normalizeWikilinks(text),
-    tags: ["noema", "ocr"],
-    sourceType: "ocr",
+export function prepareDocumentFromOcrText(
+  text: string,
+  sourceRef?: { ocrJobId?: string; ocrEngine?: string },
+): CreateDocumentInput {
+  return prepareOcrDocumentDraft(text, {
+    titleHint: "OCR Capture",
     sourceRef,
-  };
+  });
 }

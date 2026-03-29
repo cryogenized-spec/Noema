@@ -167,6 +167,25 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
 - Full notes UI/editor and vault file writer
 - Attachment binary export pipeline (only naming/embed conventions are prepared)
 
+## Organizer Documents (stabilization pass)
+
+- Documents are **markdown-native** and store source content as raw `bodyMarkdown`.
+- Organizer currently contains:
+  - **Documents** (functional list + editor + preview),
+  - **Tasks** (placeholder),
+  - **Calendar** (placeholder).
+- Current document capabilities:
+  - create/open/edit documents with debounced autosave
+  - edit metadata (folder, tags, pin, archive)
+  - filter by all/pinned/archived + optional folder chips
+  - document long-press selection mode and bulk actions
+  - attachment/link relationship groundwork
+  - OCR/import/export groundwork placeholders and utilities
+- Deferred:
+  - full OCR capture pipeline
+  - full export/import file picker + vault packaging flow
+  - Tasks/Calendar implementation
+
 
 ## Agent Studio (Stage 8 foundation)
 

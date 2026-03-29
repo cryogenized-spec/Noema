@@ -3,12 +3,14 @@ import type { ChatMessage } from "@/types/chat";
 import type { AgentProfile } from "@/types/agents";
 import type { ConversationThread } from "@/types/conversation";
 import type { DocumentRecord } from "@/types/documents";
+import type { DocumentAttachmentRecord } from "@/types/attachments";
 
 class NoemaDatabase extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
   agents!: EntityTable<AgentProfile, "id">;
   threads!: EntityTable<ConversationThread, "id">;
   documents!: EntityTable<DocumentRecord, "id">;
+  attachments!: EntityTable<DocumentAttachmentRecord, "id">;
 
   constructor() {
     super("noema-db");
@@ -68,6 +70,14 @@ class NoemaDatabase extends Dexie {
       agents: "++id, name, providerId, updatedAt",
       threads: "++id, threadKey, updatedAt",
       documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
+    });
+
+    this.version(5).stores({
+      messages: "++id, threadKey, role, kind, createdAt",
+      agents: "++id, name, providerId, updatedAt",
+      threads: "++id, threadKey, updatedAt",
+      documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
+      attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
     });
   }
 }
