@@ -5,6 +5,7 @@ import type { ConversationThread } from "@/types/conversation";
 import type { DocumentRecord } from "@/types/documents";
 import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { TaskRecord } from "@/types/tasks";
+import type { CalendarEventRecord } from "@/types/calendar";
 
 class NoemaDatabase extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
@@ -13,6 +14,7 @@ class NoemaDatabase extends Dexie {
   documents!: EntityTable<DocumentRecord, "id">;
   attachments!: EntityTable<DocumentAttachmentRecord, "id">;
   tasks!: EntityTable<TaskRecord, "id">;
+  calendarEvents!: EntityTable<CalendarEventRecord, "id">;
 
   constructor() {
     super("noema-db");
@@ -98,6 +100,17 @@ class NoemaDatabase extends Dexie {
       documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
       attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
       tasks: "++id, title, status, priority, dueAt, reminderAt, reminderEnabled, reminderState, updatedAt, isPinned, sourceType, *tags, folderId",
+    });
+
+    this.version(8).stores({
+      messages: "++id, threadKey, role, kind, createdAt",
+      agents: "++id, name, providerId, updatedAt",
+      threads: "++id, threadKey, updatedAt",
+      documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
+      attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
+      tasks: "++id, title, status, priority, dueAt, reminderAt, reminderEnabled, reminderState, updatedAt, isPinned, sourceType, *tags, folderId",
+      calendarEvents:
+        "++id, title, startAt, endAt, status, allDay, timezone, linkedTaskId, linkedDocumentId, sourceType, reminderEnabled, reminderAt, updatedAt, isPinned",
     });
   }
 }

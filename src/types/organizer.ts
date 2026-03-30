@@ -8,5 +8,5 @@ export interface OrganizerModuleStatus {
 export const ORGANIZER_MODULES: OrganizerModuleStatus[] = [
   { module: "documents", enabled: true },
   { module: "tasks", enabled: true },
-  { module: "calendar", enabled: false },
+  { module: "calendar", enabled: true },
 ];

@@ -36,7 +36,10 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     [],
   );
 
-  const preferredMimeType = useMemo(() => PREFERRED_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type)), []);
+  const preferredMimeType = useMemo(() => {
+    if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return undefined;
+    return PREFERRED_MIME_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+  }, []);
 
   const emitError = (error: SttError) => {
     onError?.(error);
@@ -159,4 +162,3 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     </button>
   );
 }
-

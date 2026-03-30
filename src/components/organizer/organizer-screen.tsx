@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CalendarScreen } from "@/components/organizer/calendar-screen";
 import { DocumentsListScreen } from "@/components/organizer/documents-list-screen";
 import { TasksListScreen } from "@/components/organizer/tasks-list-screen";
 import type { OrganizerModule } from "@/types/organizer";
@@ -44,12 +45,7 @@ export function OrganizerScreen() {
         ) : activeModule === "tasks" ? (
           <TasksListScreen />
         ) : (
-          <div className="flex h-full min-h-56 items-center justify-center rounded-2xl border border-dashed border-noema-borderSoft bg-noema-panel px-5 text-center">
-            <div>
-              <p className="text-sm font-medium text-slate-200">{labels[activeModule]} coming soon</p>
-              <p className="mt-1 text-xs text-slate-400">Organizer foundations are live; this section is a placeholder in this phase.</p>
-            </div>
-          </div>
+          <CalendarScreen />
         )}
       </div>
     </section>
