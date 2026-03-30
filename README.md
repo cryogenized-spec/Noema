@@ -214,6 +214,8 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
   - **Conversational** for compact Q&A clarification flow
 - Calendar foundation now includes a canonical local-first event model (`CalendarEventRecord`), Dexie persistence + Zustand store, shared markdown contract reuse, and task-bridge-ready fields (`linkedTaskId`, `sourceType: task_projection`).
 - Organizer Calendar now has a functional mobile home screen with date context, `Agenda | Day | Month` view selector (Agenda default), today jump, directional date navigation, empty states, and event-create FAB.
+- Agenda now groups events by day with practical metadata chips (all-day, location, linked-task, reminder, color-tag), and Day now uses a compact time-aware timeline layout optimized for phones.
+- Month view now uses a mobile-friendly grid with current-day and selected-day highlighting, subtle event density indicators, and a linked selected-day event panel below the grid.
 - Deferred in this phase: full Calendar scheduling, always-on background reminder automation, and autonomous task agents.
 - Deferred:
   - deeper project/task views beyond single-task edit surface

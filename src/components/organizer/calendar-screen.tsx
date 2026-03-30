@@ -19,9 +19,9 @@ const addMonths = (value: Date, months: number) => new Date(value.getFullYear(),
 const isSameDay = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
-const formatWhen = (startAt: string, endAt: string, allDay: boolean) => {
-  if (allDay) return new Date(startAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-  return `${new Date(startAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} → ${new Date(endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+const formatTimeRange = (startAt: string, endAt: string, allDay: boolean) => {
+  if (allDay) return "All day";
+  return `${new Date(startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${new Date(endAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 };
 
 export function CalendarScreen() {
@@ -80,6 +80,35 @@ export function CalendarScreen() {
     }
     return focusDate.toLocaleDateString([], { month: "long", year: "numeric" });
   }, [activeView, focusDate]);
+
+  const agendaGroups = useMemo(() => {
+    if (activeView !== "agenda") return [];
+    const groups = new Map<string, typeof visibleEvents>();
+    for (const event of visibleEvents) {
+      const dayKey = startOfDay(new Date(event.startAt)).toISOString();
+      const current = groups.get(dayKey) ?? [];
+      groups.set(dayKey, [...current, event]);
+    }
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dayKey, dayEvents]) => ({
+        day: new Date(dayKey),
+        events: [...dayEvents].sort((a, b) => a.startAt.localeCompare(b.startAt)),
+      }));
+  }, [activeView, visibleEvents]);
+
+  const dayAllDayEvents = useMemo(
+    () => (activeView === "day" ? visibleEvents.filter((event) => event.allDay) : []),
+    [activeView, visibleEvents],
+  );
+  const dayTimedEvents = useMemo(
+    () => (activeView === "day" ? visibleEvents.filter((event) => !event.allDay).sort((a, b) => a.startAt.localeCompare(b.startAt)) : []),
+    [activeView, visibleEvents],
+  );
+  const monthSelectedDayEvents = useMemo(
+    () => (activeView === "month" ? visibleEvents.filter((event) => isSameDay(new Date(event.startAt), focusDate)).sort((a, b) => a.startAt.localeCompare(b.startAt)) : []),
+    [activeView, focusDate, visibleEvents],
+  );
 
   const shiftDate = (direction: -1 | 1) => {
     setFocusDate((current) => {
@@ -145,21 +174,51 @@ export function CalendarScreen() {
             {monthCells.map((day) => {
               const count = visibleEvents.filter((event) => isSameDay(new Date(event.startAt), day)).length;
               const inMonth = day.getMonth() === focusDate.getMonth();
+              const isTodayCell = isSameDay(day, new Date());
+              const isSelectedCell = isSameDay(day, focusDate);
               return (
                 <button
                   key={day.toISOString()}
                   type="button"
                   onClick={() => {
                     setFocusDate(day);
-                    setActiveView("day");
                   }}
-                  className={`min-h-14 rounded-lg border p-1 text-left ${inMonth ? "border-noema-borderSoft bg-slate-950/55 text-slate-200" : "border-noema-borderSoft/50 bg-slate-950/30 text-slate-500"}`}
+                  className={`min-h-14 rounded-lg border p-1 text-left ${
+                    isSelectedCell
+                      ? "border-violet-300/45 bg-violet-500/15 text-violet-100"
+                      : inMonth
+                        ? "border-noema-borderSoft bg-slate-950/55 text-slate-200"
+                        : "border-noema-borderSoft/50 bg-slate-950/30 text-slate-500"
+                  }`}
                 >
-                  <p className="text-[10px]">{day.getDate()}</p>
-                  {count > 0 && <p className="mt-1 text-[10px] text-violet-200">{count} event{count > 1 ? "s" : ""}</p>}
+                  <p className={`text-[10px] ${isTodayCell ? "font-semibold text-cyan-200" : ""}`}>{day.getDate()}</p>
+                  <div className="mt-1 flex items-center gap-1">
+                    {count > 0 && <span className="h-1.5 w-1.5 rounded-full bg-violet-300/90" />}
+                    {count > 1 && <span className="text-[10px] text-violet-200">{count}</span>}
+                  </div>
                 </button>
               );
             })}
+          </div>
+          <div className="mt-2 rounded-xl border border-noema-borderSoft bg-slate-950/50 p-2">
+            <p className="text-xs font-semibold text-slate-200">
+              {focusDate.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+            {monthSelectedDayEvents.length === 0 ? (
+              <p className="mt-1 text-[11px] text-slate-400">No events for selected day.</p>
+            ) : (
+              <div className="mt-1.5 space-y-1.5">
+                {monthSelectedDayEvents.map((event) => (
+                  <article key={event.id} className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="line-clamp-1 text-xs font-medium text-slate-100">{event.title}</h3>
+                      {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-slate-300">{formatTimeRange(event.startAt, event.endAt, event.allDay)}</p>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : visibleEvents.length === 0 ? (
@@ -167,23 +226,91 @@ export function CalendarScreen() {
           <p className="text-sm font-medium text-slate-200">No events in this {activeView} view.</p>
           <p className="mt-1 text-xs text-slate-400">Try changing date context or create a new event.</p>
         </div>
-      ) : (
+      ) : activeView === "agenda" ? (
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-2">
-          {visibleEvents.map((event) => (
-            <article key={event.id} className="rounded-xl border border-noema-borderSoft bg-slate-950/55 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
-                <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">{event.status}</span>
+          {agendaGroups.map((group) => (
+            <section key={group.day.toISOString()} className="rounded-xl border border-noema-borderSoft bg-slate-950/40 p-2">
+              <p className="mb-2 text-xs font-semibold text-slate-300">
+                {group.day.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+              </p>
+              <div className="space-y-2">
+                {group.events.map((event) => (
+                  <article key={event.id} className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
+                      <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-300">{event.status}</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-300">{formatTimeRange(event.startAt, event.endAt, event.allDay)}</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                      {event.locationText && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-300">📍 {event.locationText}</span>}
+                      {event.linkedTaskId && <span className="rounded-full border border-indigo-300/35 px-1.5 py-0.5 text-indigo-200">Task linked</span>}
+                      {event.reminderEnabled && <span className="rounded-full border border-cyan-300/35 px-1.5 py-0.5 text-cyan-200">Reminder</span>}
+                      {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-200">{event.colorTag}</span>}
+                      <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-300">{event.allDay ? "All day" : event.timezone}</span>
+                    </div>
+                  </article>
+                ))}
               </div>
-              <p className="mt-1 text-[11px] text-slate-400">{formatWhen(event.startAt, event.endAt, event.allDay)}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{event.timezone}</span>
-                <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{event.sourceType}</span>
-                {event.linkedTaskId && <span className="rounded-full border border-indigo-300/35 px-1.5 py-0.5 text-[10px] text-indigo-200">task #{event.linkedTaskId}</span>}
-                {event.linkedDocumentId && <span className="rounded-full border border-cyan-300/35 px-1.5 py-0.5 text-[10px] text-cyan-200">doc #{event.linkedDocumentId}</span>}
-              </div>
-            </article>
+            </section>
           ))}
+        </div>
+      ) : activeView === "day" ? (
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-2">
+          {dayAllDayEvents.length > 0 && (
+            <section className="rounded-xl border border-noema-borderSoft bg-slate-950/40 p-2">
+              <p className="mb-2 text-xs font-semibold text-slate-300">All-day</p>
+              <div className="space-y-1.5">
+                {dayAllDayEvents.map((event) => (
+                  <article key={event.id} className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
+                      {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                      {event.locationText && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-300">📍 {event.locationText}</span>}
+                      {event.linkedTaskId && <span className="rounded-full border border-indigo-300/35 px-1.5 py-0.5 text-indigo-200">Task linked</span>}
+                      {event.reminderEnabled && <span className="rounded-full border border-cyan-300/35 px-1.5 py-0.5 text-cyan-200">Reminder</span>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+          {dayTimedEvents.length > 0 ? (
+            <section className="rounded-xl border border-noema-borderSoft bg-slate-950/40 p-2">
+              <p className="mb-2 text-xs font-semibold text-slate-300">Timeline</p>
+              <div className="space-y-2">
+                {dayTimedEvents.map((event) => (
+                  <article key={event.id} className="grid grid-cols-[56px_1fr] gap-2">
+                    <div className="pt-1 text-right text-[11px] text-slate-400">
+                      {new Date(event.startAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                    <div className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
+                        {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-300">{formatTimeRange(event.startAt, event.endAt, event.allDay)}</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                        {event.locationText && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-300">📍 {event.locationText}</span>}
+                        {event.linkedTaskId && <span className="rounded-full border border-indigo-300/35 px-1.5 py-0.5 text-indigo-200">Task linked</span>}
+                        {event.reminderEnabled && <span className="rounded-full border border-cyan-300/35 px-1.5 py-0.5 text-cyan-200">Reminder</span>}
+                        <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-slate-300">{event.timezone}</span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-950/35 p-3 text-center text-xs text-slate-400">
+              No timed events for this day.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-950/35 p-3 text-center text-xs text-slate-400">
+          Unsupported view.
         </div>
       )}
 

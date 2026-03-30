@@ -123,6 +123,8 @@ export function ApiLockboxScreen() {
           const draft = drafts[provider.id];
           const model = provider.models.find((item) => item.modelId === draft?.defaultModelId) ?? provider.models[0];
           const configured = configuredIds.has(provider.id);
+          const revealedKey = revealedKeys[provider.id];
+          const isRevealed = revealedKey !== undefined;
 
           return (
             <article key={provider.id} className="rounded-xl border border-noema-border bg-noema-panel">
@@ -155,8 +157,8 @@ export function ApiLockboxScreen() {
                     API Key
                     <div className="mt-1 flex gap-2">
                       <input
-                        type={revealedKeys[provider.id] ? "text" : "password"}
-                        value={revealedKeys[provider.id] ?? draft.apiKey}
+                        type={isRevealed ? "text" : "password"}
+                        value={isRevealed ? revealedKey : draft.apiKey}
                         onChange={(event) =>
                           setDrafts((prev) => ({
                             ...prev,
@@ -170,15 +172,19 @@ export function ApiLockboxScreen() {
                         type="button"
                         className="rounded-lg border border-noema-borderSoft bg-slate-900/70 px-2 text-slate-300"
                         onClick={async () => {
-                          if (revealedKeys[provider.id]) {
-                            setRevealedKeys((prev) => ({ ...prev, [provider.id]: "" }));
+                          if (isRevealed) {
+                            setRevealedKeys((prev) => {
+                              const next = { ...prev };
+                              delete next[provider.id];
+                              return next;
+                            });
                             return;
                           }
                           const key = await revealKey(provider.id);
                           setRevealedKeys((prev) => ({ ...prev, [provider.id]: key }));
                         }}
                       >
-                        {revealedKeys[provider.id] ? "Hide" : "Reveal"}
+                        {isRevealed ? "Hide" : "Reveal"}
                       </button>
                     </div>
                   </label>
@@ -305,13 +311,17 @@ export function ApiLockboxScreen() {
                       onClick={async () => {
                         await saveProvider({
                           providerId: provider.id,
-                          apiKey: revealedKeys[provider.id] || draft.apiKey,
+                          apiKey: isRevealed ? revealedKey : draft.apiKey,
                           baseUrl: draft.baseUrl,
                           defaultModelId: draft.defaultModelId,
                           settings: draft.settings,
                           geminiSafety: provider.id === "gemini" ? draft.geminiSafety : undefined,
                         });
-                        setRevealedKeys((prev) => ({ ...prev, [provider.id]: "" }));
+                        setRevealedKeys((prev) => {
+                          const next = { ...prev };
+                          delete next[provider.id];
+                          return next;
+                        });
                       }}
                     >
                       Save
