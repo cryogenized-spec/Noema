@@ -47,8 +47,12 @@ export function createTaskRecord(input: CreateTaskInput): Omit<TaskRecord, "id">
     aiAssisted: input.aiAssisted ?? false,
     aiClarificationSummary: input.aiClarificationSummary?.trim() || undefined,
     subtasks: normalizeSubtasks(input.subtasks),
+    reminderEnabled: input.reminderEnabled ?? false,
+    reminderAt: input.reminderAt,
+    reminderState: input.reminderEnabled ? input.reminderState ?? "scheduled" : "disabled",
+    lastReminderAttemptAt: input.lastReminderAttemptAt,
+    reminderNote: input.reminderNote?.trim() || undefined,
   };
 }
 
 export const TASK_MARKDOWN_CONTRACT = MARKDOWN_STORAGE_CONTRACT;
-

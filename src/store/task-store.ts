@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { db } from "@/lib/db/client";
 import { createTaskRecord } from "@/lib/tasks/contract";
+import { deriveReminderState } from "@/lib/tasks/reminders";
 import { normalizeMarkdownSource } from "@/lib/markdown/contract";
 import type { CreateTaskInput, TaskIntakeMode, TaskRecord, TaskStatus } from "@/types/tasks";
 
@@ -31,6 +32,8 @@ const TASK_REMEMBER_LAST_MODE_KEY = "noema-task-remember-last-mode";
 const normalizePatch = (patch: Partial<CreateTaskInput>, current: TaskRecord) => {
   const nextStatus = patch.status ?? current.status;
   const completedAt = nextStatus === "done" ? patch.completedAt ?? current.completedAt ?? new Date().toISOString() : undefined;
+  const reminderEnabled = patch.reminderEnabled ?? current.reminderEnabled;
+  const reminderAt = patch.reminderAt ?? current.reminderAt;
 
   return {
     title: patch.title?.trim() ?? current.title,
@@ -50,6 +53,15 @@ const normalizePatch = (patch: Partial<CreateTaskInput>, current: TaskRecord) =>
     aiAssisted: patch.aiAssisted ?? current.aiAssisted,
     aiClarificationSummary: patch.aiClarificationSummary ?? current.aiClarificationSummary,
     subtasks: patch.subtasks ?? current.subtasks,
+    reminderEnabled,
+    reminderAt,
+    reminderState: deriveReminderState({
+      reminderEnabled,
+      reminderAt,
+      reminderState: patch.reminderState ?? current.reminderState,
+    }),
+    lastReminderAttemptAt: patch.lastReminderAttemptAt ?? current.lastReminderAttemptAt,
+    reminderNote: patch.reminderNote ?? current.reminderNote,
     updatedAt: new Date().toISOString(),
   } satisfies Omit<TaskRecord, "id" | "createdAt"> & { updatedAt: string };
 };

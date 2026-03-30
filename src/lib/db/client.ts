@@ -90,6 +90,15 @@ class NoemaDatabase extends Dexie {
       attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
       tasks: "++id, title, status, priority, dueAt, updatedAt, isPinned, sourceType, *tags, folderId",
     });
+
+    this.version(7).stores({
+      messages: "++id, threadKey, role, kind, createdAt",
+      agents: "++id, name, providerId, updatedAt",
+      threads: "++id, threadKey, updatedAt",
+      documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
+      attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
+      tasks: "++id, title, status, priority, dueAt, reminderAt, reminderEnabled, reminderState, updatedAt, isPinned, sourceType, *tags, folderId",
+    });
   }
 }
 

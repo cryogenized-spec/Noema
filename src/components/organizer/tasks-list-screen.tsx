@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useTaskStore } from "@/store/task-store";
 import { buildGuidedIntakeDraft, type GuidedClarification, type GuidedIntakeDraft } from "@/lib/tasks/guided-intake";
 import { TasksGuidedIntakeSheet } from "@/components/organizer/tasks-guided-intake-sheet";
+import { TasksConversationalIntakeSheet } from "@/components/organizer/tasks-conversational-intake-sheet";
+import { TaskEditorScreen } from "@/components/organizer/task-editor-screen";
 import { VoiceCaptureButton } from "@/components/voice/voice-capture-button";
 import type { TaskCaptureMethod, TaskIntakeMode, TaskPriority, TaskRecord, TaskStatus } from "@/types/tasks";
 
 type TaskQuickFilter = "today" | "upcoming" | "all" | "done" | "archived";
+type TaskViewMode = "list" | "board";
 
 const QUICK_FILTERS: { key: TaskQuickFilter; label: string }[] = [
   { key: "today", label: "Today" },
@@ -16,6 +19,13 @@ const QUICK_FILTERS: { key: TaskQuickFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "done", label: "Done" },
   { key: "archived", label: "Archived" },
+];
+
+const BOARD_COLUMNS: { status: TaskStatus; label: string }[] = [
+  { status: "inbox", label: "Inbox" },
+  { status: "todo", label: "Todo" },
+  { status: "doing", label: "Doing" },
+  { status: "done", label: "Done" },
 ];
 
 const PRIORITY_STYLES: Record<TaskPriority, string> = {
@@ -87,12 +97,19 @@ export function TasksListScreen() {
     hydrating,
     hydrateTasks,
     createTask,
+    updateTask,
+    deleteTask,
     defaultIntakeMode,
     rememberLastUsedMode,
     setDefaultIntakeMode,
     setRememberLastUsedMode,
   } = useTaskStore();
   const [activeFilter, setActiveFilter] = useState<TaskQuickFilter>("today");
+  const [activeView, setActiveView] = useState<TaskViewMode>("list");
+  const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<number[]>([]);
+  const [actionTask, setActionTask] = useState<TaskRecord | null>(null);
   const [notice, setNotice] = useState("");
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [captureMethod, setCaptureMethod] = useState<TaskCaptureMethod>("type");
@@ -101,6 +118,9 @@ export function TasksListScreen() {
   const [guidedDraft, setGuidedDraft] = useState<GuidedIntakeDraft | null>(null);
   const [guidedClarifications, setGuidedClarifications] = useState<GuidedClarification[]>([]);
   const [guidedLoading, setGuidedLoading] = useState(false);
+  const [conversationalDraft, setConversationalDraft] = useState<GuidedIntakeDraft | null>(null);
+  const [conversationalClarifications, setConversationalClarifications] = useState<GuidedClarification[]>([]);
+  const longPressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -113,6 +133,13 @@ export function TasksListScreen() {
     const timeout = window.setTimeout(() => setNotice(""), 1800);
     return () => window.clearTimeout(timeout);
   }, [notice]);
+
+  useEffect(
+    () => () => {
+      if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (launcherOpen) {
@@ -129,31 +156,55 @@ export function TasksListScreen() {
     return sorted.filter((task) => task.status !== "archived");
   }, [activeFilter, tasks]);
 
-  const handleCreate = async () => {
-    const taskNumber = tasks.length + 1;
-    const trimmedDraft = intakeDraft.trim();
-    const titleFromDraft = trimmedDraft.split("\n").find((line) => line.trim().length > 0)?.trim();
-    const sourceType = captureMethod === "voice" ? "voice_capture" : selectedMode === "guided_form" ? "manual" : "ai_intake";
+  const activeTask = useMemo(
+    () => tasks.find((task) => task.id === activeTaskId) ?? null,
+    [tasks, activeTaskId],
+  );
+  const selectedTasks = useMemo(
+    () => tasks.filter((task) => task.id !== undefined && selectedTaskIds.includes(task.id)),
+    [tasks, selectedTaskIds],
+  );
+  const boardColumns = useMemo(() => {
+    if (activeFilter === "archived") return [{ status: "archived" as const, label: "Archived" }];
+    if (activeFilter === "done") return BOARD_COLUMNS.filter((column) => column.status === "done");
+    return BOARD_COLUMNS;
+  }, [activeFilter]);
+  const tasksByStatus = useMemo(
+    () =>
+      boardColumns.reduce<Record<string, TaskRecord[]>>((acc, column) => {
+        acc[column.status] = filteredTasks.filter((task) => task.status === column.status);
+        return acc;
+      }, {}),
+    [boardColumns, filteredTasks],
+  );
 
+  const saveStructuredDraft = async (draft: GuidedIntakeDraft, includeSubtasks: boolean) => {
     await createTask({
-      title: titleFromDraft || `Task ${taskNumber}`,
-      descriptionMarkdown: trimmedDraft,
-      status: "inbox",
-      priority: "normal",
-      sourceType,
+      title: draft.title.trim() || "Untitled task",
+      descriptionMarkdown: draft.descriptionMarkdown,
+      dueAt: draft.dueAt,
+      estimatedDurationMinutes: draft.estimatedDurationMinutes,
+      priority: draft.priority,
+      status: draft.status,
+      subtasks: includeSubtasks
+        ? draft.suggestedSubtasks
+            .map((subtask, index) => ({ ...subtask, order: index, title: subtask.title.trim() }))
+            .filter((subtask) => subtask.title.length > 0)
+        : undefined,
+      sourceType: "ai_intake",
+      aiAssisted: true,
       tags: ["task"],
-      intakeTranscript: captureMethod === "voice" ? trimmedDraft : undefined,
-      aiAssisted: selectedMode === "guided_form",
     });
-
     if (rememberLastUsedMode) {
       setDefaultIntakeMode(selectedMode);
     }
-    setActiveFilter("all");
-    setLauncherOpen(false);
-    setCaptureMethod("type");
+    setGuidedDraft(null);
+    setGuidedClarifications([]);
+    setConversationalDraft(null);
+    setConversationalClarifications([]);
     setIntakeDraft("");
-    setNotice(selectedMode === "guided_form" ? "Task captured in guided mode." : "Task captured in conversational mode.");
+    setActiveFilter("all");
+    setNotice("Task draft saved.");
   };
 
   const beginGuidedFlow = async () => {
@@ -173,14 +224,153 @@ export function TasksListScreen() {
     }
   };
 
+  const beginConversationalFlow = async () => {
+    const trimmedDraft = intakeDraft.trim();
+    if (!trimmedDraft) {
+      setNotice("Add a rough request first so Noema can structure the task.");
+      return;
+    }
+    setGuidedLoading(true);
+    try {
+      const result = await buildGuidedIntakeDraft(trimmedDraft);
+      setConversationalDraft(result.draft);
+      setConversationalClarifications(result.clarifications);
+      setLauncherOpen(false);
+    } finally {
+      setGuidedLoading(false);
+    }
+  };
+
   const openLauncher = () => {
     setSelectedMode(defaultIntakeMode);
     setCaptureMethod("type");
     setLauncherOpen(true);
   };
 
+  const toggleSelectTask = (task: TaskRecord) => {
+    if (task.id === undefined) return;
+    setSelectedTaskIds((current) =>
+      current.includes(task.id as number) ? current.filter((id) => id !== task.id) : [...current, task.id as number],
+    );
+  };
+
+  const clearSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedTaskIds([]);
+  };
+
+  const startLongPress = (task: TaskRecord) => {
+    if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      if (task.id !== undefined) {
+        setSelectionMode(true);
+        setSelectedTaskIds((current) => (current.includes(task.id as number) ? current : [...current, task.id as number]));
+      }
+      setActionTask(task);
+    }, 420);
+  };
+
+  const stopLongPress = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (selectionMode && selectedTaskIds.length === 0) {
+      setSelectionMode(false);
+    }
+  }, [selectionMode, selectedTaskIds.length]);
+
+  const duplicateTask = async (task: TaskRecord) => {
+    await createTask({
+      title: `${task.title} Copy`,
+      descriptionMarkdown: task.descriptionMarkdown,
+      status: task.status,
+      priority: task.priority,
+      dueAt: task.dueAt,
+      estimatedDurationMinutes: task.estimatedDurationMinutes,
+      tags: task.tags,
+      isPinned: task.isPinned,
+      sourceType: task.sourceType,
+      sourceRef: task.sourceRef,
+      intakeTranscript: task.intakeTranscript,
+      aiAssisted: task.aiAssisted,
+      aiClarificationSummary: task.aiClarificationSummary,
+      subtasks: task.subtasks,
+    });
+    setActionTask(null);
+    setNotice("Task duplicated.");
+  };
+
+  const bulkComplete = async () => {
+    await Promise.all(
+      selectedTasks.flatMap((task) => (task.id !== undefined ? [updateTask(task.id, { status: task.status === "done" ? "todo" : "done" })] : [])),
+    );
+    clearSelectionMode();
+  };
+
+  const bulkArchive = async () => {
+    await Promise.all(
+      selectedTasks.flatMap((task) =>
+        task.id !== undefined ? [updateTask(task.id, { status: task.status === "archived" ? "todo" : "archived" })] : [],
+      ),
+    );
+    clearSelectionMode();
+  };
+
+  const bulkDelete = async () => {
+    await Promise.all(selectedTasks.flatMap((task) => (task.id !== undefined ? [deleteTask(task.id)] : [])));
+    clearSelectionMode();
+  };
+
+  const bulkPin = async () => {
+    await Promise.all(
+      selectedTasks.flatMap((task) => (task.id !== undefined ? [updateTask(task.id, { isPinned: !task.isPinned })] : [])),
+    );
+    clearSelectionMode();
+  };
+
+  if (activeTask && activeTask.id !== undefined) {
+    return (
+      <TaskEditorScreen
+        task={activeTask}
+        onBack={() => setActiveTaskId(null)}
+        onUpdate={async (id, patch) => {
+          await updateTask(id, patch);
+        }}
+      />
+    );
+  }
+
   return (
     <section className="relative flex h-full min-h-0 flex-col gap-3 pb-16">
+      {selectionMode && (
+        <div className="rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-medium text-slate-100">{selectedTaskIds.length} selected</p>
+            <button type="button" onClick={clearSelectionMode} className="text-xs text-slate-400">
+              Close
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <button type="button" onClick={() => void bulkComplete()} className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300">
+              Complete/Reopen
+            </button>
+            <button type="button" onClick={() => void bulkArchive()} className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300">
+              Archive
+            </button>
+            <button type="button" onClick={() => void bulkPin()} className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300">
+              Pin
+            </button>
+            <button type="button" onClick={() => void bulkDelete()} className="rounded-md border border-rose-300/30 px-2 py-1 text-[11px] text-rose-200">
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
         <div className="mb-2 flex items-center justify-between">
           <div>
@@ -205,6 +395,22 @@ export function TasksListScreen() {
             </button>
           ))}
         </div>
+        <div className="mt-2 flex gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveView("list")}
+            className={`rounded-md border px-2 py-1 text-[11px] ${activeView === "list" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("board")}
+            className={`rounded-md border px-2 py-1 text-[11px] ${activeView === "board" ? "border-violet-300/35 bg-violet-500/20 text-violet-100" : "border-noema-borderSoft text-slate-300"}`}
+          >
+            Board
+          </button>
+        </div>
       </div>
 
       {filteredTasks.length === 0 ? (
@@ -212,16 +418,48 @@ export function TasksListScreen() {
           <p className="text-sm font-medium text-slate-200">No tasks in {QUICK_FILTERS.find((filter) => filter.key === activeFilter)?.label}.</p>
           <p className="mt-1 text-xs text-slate-400">Use the + button to quickly create a task.</p>
         </div>
-      ) : (
+      ) : activeView === "list" ? (
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-2">
           {filteredTasks.map((task) => {
             const subtaskProgress = buildSubtaskProgress(task);
             const duration = formatDuration(task.estimatedDurationMinutes);
+            const isSelected = task.id !== undefined && selectedTaskIds.includes(task.id);
             return (
-              <article key={task.id} className="rounded-xl border border-noema-borderSoft bg-slate-950/55 p-3">
+              <article
+                key={task.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (selectionMode) {
+                    toggleSelectTask(task);
+                    return;
+                  }
+                  setActiveTaskId(task.id ?? null);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setActionTask(task);
+                }}
+                onTouchStart={() => startLongPress(task)}
+                onTouchMove={stopLongPress}
+                onTouchEnd={stopLongPress}
+                onTouchCancel={stopLongPress}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    if (selectionMode) {
+                      toggleSelectTask(task);
+                    } else {
+                      setActiveTaskId(task.id ?? null);
+                    }
+                  }
+                }}
+                className={`rounded-xl border p-3 ${isSelected ? "border-violet-300/35 bg-violet-500/10" : "border-noema-borderSoft bg-slate-950/55"}`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{task.title}</h3>
                   <div className="mt-0.5 flex items-center gap-1">
+                    {isSelected && <Icon icon="solar:check-circle-bold" className="text-sm text-violet-200" />}
                     {task.isPinned && <Icon icon="solar:pin-bold" className="text-sm text-amber-300" />}
                     <span className={`rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${STATUS_STYLES[task.status]}`}>
                       {task.status}
@@ -244,6 +482,85 @@ export function TasksListScreen() {
               </article>
             );
           })}
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-x-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-2">
+          <div className="flex h-full min-h-0 gap-2">
+            {boardColumns.map((column) => (
+              <section key={column.status} className="flex h-full min-h-0 w-64 shrink-0 flex-col rounded-xl border border-noema-borderSoft bg-slate-950/50 p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-slate-200">{column.label}</p>
+                  <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-400">
+                    {tasksByStatus[column.status]?.length ?? 0}
+                  </span>
+                </div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-0.5">
+                  {(tasksByStatus[column.status] ?? []).length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-noema-borderSoft p-2 text-[11px] text-slate-500">No tasks</div>
+                  ) : (
+                    (tasksByStatus[column.status] ?? []).map((task) => {
+                      const subtaskProgress = buildSubtaskProgress(task);
+                      const duration = formatDuration(task.estimatedDurationMinutes);
+                      const isSelected = task.id !== undefined && selectedTaskIds.includes(task.id);
+                      return (
+                        <article
+                          key={task.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            if (selectionMode) {
+                              toggleSelectTask(task);
+                              return;
+                            }
+                            setActiveTaskId(task.id ?? null);
+                          }}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            setActionTask(task);
+                          }}
+                          onTouchStart={() => startLongPress(task)}
+                          onTouchMove={stopLongPress}
+                          onTouchEnd={stopLongPress}
+                          onTouchCancel={stopLongPress}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              if (selectionMode) {
+                                toggleSelectTask(task);
+                              } else {
+                                setActiveTaskId(task.id ?? null);
+                              }
+                            }
+                          }}
+                          className={`rounded-xl border p-2.5 ${isSelected ? "border-violet-300/35 bg-violet-500/10" : "border-noema-borderSoft bg-slate-950/70"}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="line-clamp-2 text-xs font-medium text-slate-100">{task.title}</h3>
+                            <div className="mt-0.5 flex items-center gap-1">
+                              {isSelected && <Icon icon="solar:check-circle-bold" className="text-sm text-violet-200" />}
+                              {task.isPinned && <Icon icon="solar:pin-bold" className="text-sm text-amber-300" />}
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className={`rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${PRIORITY_STYLES[task.priority]}`}>
+                              {task.priority}
+                            </span>
+                            <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{formatDueAt(task.dueAt)}</span>
+                            {duration && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{duration}</span>}
+                            {subtaskProgress && (
+                              <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
+                                {subtaskProgress}
+                              </span>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
+            ))}
+          </div>
         </div>
       )}
 
@@ -364,12 +681,12 @@ export function TasksListScreen() {
                   if (selectedMode === "guided_form") {
                     void beginGuidedFlow();
                   } else {
-                    void handleCreate();
+                    void beginConversationalFlow();
                   }
                 }}
                 className="rounded-lg border border-violet-300/35 bg-violet-500/20 px-3 py-2 text-xs font-medium text-violet-100 disabled:opacity-50"
               >
-                {selectedMode === "guided_form" ? (guidedLoading ? "Structuring..." : "Continue to guided draft") : "Continue"}
+                {guidedLoading ? "Structuring..." : selectedMode === "guided_form" ? "Continue to guided draft" : "Start conversational intake"}
               </button>
             </div>
           </div>
@@ -385,32 +702,75 @@ export function TasksListScreen() {
             setGuidedClarifications([]);
           }}
           onSave={async (draft) => {
-            await createTask({
-              title: draft.title.trim() || "Untitled task",
-              descriptionMarkdown: draft.descriptionMarkdown,
-              dueAt: draft.dueAt,
-              estimatedDurationMinutes: draft.estimatedDurationMinutes,
-              priority: draft.priority,
-              status: draft.status,
-              subtasks: draft.includeSubtasks
-                ? draft.suggestedSubtasks
-                    .map((subtask, index) => ({ ...subtask, order: index, title: subtask.title.trim() }))
-                    .filter((subtask) => subtask.title.length > 0)
-                : undefined,
-              sourceType: "ai_intake",
-              aiAssisted: true,
-              tags: ["task"],
-            });
-            if (rememberLastUsedMode) {
-              setDefaultIntakeMode("guided_form");
-            }
-            setGuidedDraft(null);
-            setGuidedClarifications([]);
-            setIntakeDraft("");
-            setActiveFilter("all");
-            setNotice("Guided task draft saved.");
+            await saveStructuredDraft(draft, draft.includeSubtasks);
           }}
         />
+      )}
+
+      {conversationalDraft && (
+        <TasksConversationalIntakeSheet
+          draft={conversationalDraft}
+          clarifications={conversationalClarifications}
+          onCancel={() => {
+            setConversationalDraft(null);
+            setConversationalClarifications([]);
+          }}
+          onSwitchToManualEdit={(draft, includeSubtasks) => {
+            setConversationalDraft(null);
+            setConversationalClarifications([]);
+            setGuidedDraft({
+              ...draft,
+              suggestedSubtasks: includeSubtasks ? draft.suggestedSubtasks : [],
+            });
+            setGuidedClarifications([]);
+          }}
+          onSave={async (draft, includeSubtasks) => {
+            await saveStructuredDraft(draft, includeSubtasks);
+          }}
+        />
+      )}
+
+      {actionTask && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/45" onClick={() => setActionTask(null)}>
+          <div className="w-full rounded-t-2xl border border-noema-border bg-noema-panel p-3 pb-6 shadow-glass" onClick={(event) => event.stopPropagation()}>
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-600/80" />
+            <p className="mb-2 text-xs text-slate-400">{actionTask.title}</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={() => { setActiveTaskId(actionTask.id ?? null); setActionTask(null); }}>Open</button>
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={async () => {
+                if (actionTask.id === undefined) return;
+                const nextTitle = window.prompt("Rename task", actionTask.title)?.trim();
+                if (!nextTitle) return;
+                await updateTask(actionTask.id, { title: nextTitle });
+                setActionTask(null);
+              }}>Rename</button>
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={async () => {
+                if (actionTask.id === undefined) return;
+                await updateTask(actionTask.id, { isPinned: !actionTask.isPinned });
+                setActionTask(null);
+              }}>{actionTask.isPinned ? "Unpin" : "Pin"}</button>
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={async () => {
+                if (actionTask.id === undefined) return;
+                await updateTask(actionTask.id, { status: actionTask.status === "done" ? "todo" : "done" });
+                setActionTask(null);
+              }}>{actionTask.status === "done" ? "Reopen" : "Complete"}</button>
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={async () => {
+                if (actionTask.id === undefined) return;
+                await updateTask(actionTask.id, { status: actionTask.status === "archived" ? "todo" : "archived" });
+                setActionTask(null);
+              }}>{actionTask.status === "archived" ? "Unarchive" : "Archive"}</button>
+              <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={() => void duplicateTask(actionTask)}>Duplicate</button>
+              <button type="button" className="col-span-2 rounded-lg border border-rose-300/30 px-2 py-2 text-rose-200" onClick={async () => {
+                if (actionTask.id === undefined) return;
+                await deleteTask(actionTask.id);
+                setActionTask(null);
+              }}>Delete</button>
+              <button type="button" className="col-span-2 rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-300" onClick={() => setActionTask(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

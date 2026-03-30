@@ -203,8 +203,18 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
   - intake mode choice: **Guided form** or **Conversational**
   - persisted default-mode preference (`guided_form` by default) and optional “remember last used mode”
 - Guided intake mode now runs an AI-assisted structuring step (runtime-backed with local heuristics fallback), then opens an editable structured draft (title, description, due, duration, priority, status, optional subtasks) before save/discard.
+- Conversational intake mode now provides a compact task-focused Q&A flow that progressively resolves clarifications, shows draft summary, and can switch into manual structured edit before final save.
+- Tasks now include a dedicated detail/edit screen with markdown description edit/preview, status/priority/due/duration controls, subtasks editor, tags, pin/archive controls, and debounced autosave.
+- Tasks list now supports long-press action sheet + multi-select mode with bulk complete/archive/pin/delete actions for mobile workflows.
+- Tasks now support a view switcher with **List** (default) and a compact **Board** view grouped by status (`Inbox`, `Todo`, `Doing`, `Done`; archived-focused lane when filtered to archived).
+- Tasks now include reminder groundwork (`reminderEnabled`, `reminderAt`, `reminderState`, optional reminder note/attempt metadata) with editor controls and utility hooks for future in-app/local/push reminder integrations.
+- Tasks remain **user-owned and markdown-friendly**: descriptions are markdown-native and editable in-place with preview.
+- Intake modes are intentionally split:
+  - **Guided form** for structured fields and edits
+  - **Conversational** for compact Q&A clarification flow
+- Deferred in this phase: full Calendar scheduling, always-on background reminder automation, and autonomous task agents.
 - Deferred:
-  - task detail/intake editor flow beyond quick-create
+  - deeper project/task views beyond single-task edit surface
   - Calendar implementation
   - autonomous agent task workflows
 
