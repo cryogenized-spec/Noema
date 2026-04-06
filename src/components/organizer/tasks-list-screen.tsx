@@ -8,6 +8,8 @@ import { TasksGuidedIntakeSheet } from "@/components/organizer/tasks-guided-inta
 import { TasksConversationalIntakeSheet } from "@/components/organizer/tasks-conversational-intake-sheet";
 import { TaskEditorScreen } from "@/components/organizer/task-editor-screen";
 import { VoiceCaptureButton } from "@/components/voice/voice-capture-button";
+import { useCalendarStore } from "@/store/calendar-store";
+import { projectTaskToCalendarEventInput } from "@/lib/calendar/task-bridge";
 import type { TaskCaptureMethod, TaskIntakeMode, TaskPriority, TaskRecord, TaskStatus } from "@/types/tasks";
 
 type TaskQuickFilter = "today" | "upcoming" | "all" | "done" | "archived";
@@ -104,6 +106,14 @@ export function TasksListScreen() {
     setDefaultIntakeMode,
     setRememberLastUsedMode,
   } = useTaskStore();
+  const {
+    events: calendarEvents,
+    hydrated: calendarHydrated,
+    hydrating: calendarHydrating,
+    hydrateEvents: hydrateCalendarEvents,
+    createEvent: createCalendarEvent,
+    updateEvent: updateCalendarEvent,
+  } = useCalendarStore();
   const [activeFilter, setActiveFilter] = useState<TaskQuickFilter>("today");
   const [activeView, setActiveView] = useState<TaskViewMode>("list");
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
@@ -127,6 +137,12 @@ export function TasksListScreen() {
       void hydrateTasks();
     }
   }, [hydrateTasks, hydrated, hydrating]);
+
+  useEffect(() => {
+    if (!calendarHydrated && !calendarHydrating) {
+      void hydrateCalendarEvents();
+    }
+  }, [calendarHydrated, calendarHydrating, hydrateCalendarEvents]);
 
   useEffect(() => {
     if (!notice) return;
@@ -177,6 +193,15 @@ export function TasksListScreen() {
       }, {}),
     [boardColumns, filteredTasks],
   );
+  const linkedEventByTaskId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const event of calendarEvents) {
+      if (event.linkedTaskId && event.status !== "archived") {
+        map.set(event.linkedTaskId, (map.get(event.linkedTaskId) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [calendarEvents]);
 
   const saveStructuredDraft = async (draft: GuidedIntakeDraft, includeSubtasks: boolean) => {
     await createTask({
@@ -302,6 +327,28 @@ export function TasksListScreen() {
     });
     setActionTask(null);
     setNotice("Task duplicated.");
+  };
+
+  const scheduleTask = async (task: TaskRecord) => {
+    if (task.id === undefined) return;
+    const projection = projectTaskToCalendarEventInput(task);
+    if (!projection) {
+      setNotice("Add a due date first to schedule this task.");
+      return;
+    }
+
+    const existingProjection = calendarEvents.find(
+      (event) => event.linkedTaskId === task.id && event.sourceType === "task_projection" && event.status !== "archived",
+    );
+
+    if (existingProjection?.id !== undefined) {
+      await updateCalendarEvent(existingProjection.id, projection);
+      setNotice("Linked calendar event updated.");
+      return;
+    }
+
+    await createCalendarEvent(projection);
+    setNotice("Task scheduled on calendar.");
   };
 
   const bulkComplete = async () => {
@@ -473,6 +520,11 @@ export function TasksListScreen() {
                   </span>
                   <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{formatDueAt(task.dueAt)}</span>
                   {duration && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{duration}</span>}
+                  {(task.id !== undefined ? linkedEventByTaskId.get(task.id) : 0) ? (
+                    <span className="rounded-full border border-indigo-300/35 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                      Scheduled
+                    </span>
+                  ) : null}
                   {subtaskProgress && (
                     <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
                       {subtaskProgress}
@@ -547,6 +599,11 @@ export function TasksListScreen() {
                             </span>
                             <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{formatDueAt(task.dueAt)}</span>
                             {duration && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-300">{duration}</span>}
+                            {(task.id !== undefined ? linkedEventByTaskId.get(task.id) : 0) ? (
+                              <span className="rounded-full border border-indigo-300/35 bg-indigo-500/10 px-1.5 py-0.5 text-[10px] text-indigo-200">
+                                Scheduled
+                              </span>
+                            ) : null}
                             {subtaskProgress && (
                               <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
                                 {subtaskProgress}
@@ -760,6 +817,16 @@ export function TasksListScreen() {
                 setActionTask(null);
               }}>{actionTask.status === "archived" ? "Unarchive" : "Archive"}</button>
               <button type="button" className="rounded-lg border border-noema-borderSoft px-2 py-2 text-slate-200" onClick={() => void duplicateTask(actionTask)}>Duplicate</button>
+              <button
+                type="button"
+                className="col-span-2 rounded-lg border border-indigo-300/35 bg-indigo-500/12 px-2 py-2 text-indigo-100"
+                onClick={async () => {
+                  await scheduleTask(actionTask);
+                  setActionTask(null);
+                }}
+              >
+                Schedule on calendar
+              </button>
               <button type="button" className="col-span-2 rounded-lg border border-rose-300/30 px-2 py-2 text-rose-200" onClick={async () => {
                 if (actionTask.id === undefined) return;
                 await deleteTask(actionTask.id);

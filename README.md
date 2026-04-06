@@ -216,10 +216,11 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
 - Organizer Calendar now has a functional mobile home screen with date context, `Agenda | Day | Month` view selector (Agenda default), today jump, directional date navigation, empty states, and event-create FAB.
 - Agenda now groups events by day with practical metadata chips (all-day, location, linked-task, reminder, color-tag), and Day now uses a compact time-aware timeline layout optimized for phones.
 - Month view now uses a mobile-friendly grid with current-day and selected-day highlighting, subtle event density indicators, and a linked selected-day event panel below the grid.
+- Calendar events now support mobile create/edit via a dedicated event sheet (title, markdown description, start/end, all-day, timezone, location, reminder, color tag, linked task ID) with explicit Save and validation.
+- Tasks and Calendar are now bridged for first-pass scheduling: task action sheets can project due tasks into linked calendar events (`sourceType: task_projection`, `linkedTaskId`), and task cards show a “Scheduled” indicator when linked events exist.
 - Deferred in this phase: full Calendar scheduling, always-on background reminder automation, and autonomous task agents.
 - Deferred:
   - deeper project/task views beyond single-task edit surface
-  - Calendar implementation
   - autonomous agent task workflows
 
 ## Voice-to-Text foundation (manual record → stop → transcribe)

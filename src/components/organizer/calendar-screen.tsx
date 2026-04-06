@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@iconify/react";
+import { CalendarEventEditorSheet } from "@/components/organizer/calendar-event-editor-sheet";
 import { useCalendarStore } from "@/store/calendar-store";
+import type { CalendarEventRecord, CreateCalendarEventInput } from "@/types/calendar";
 
 type CalendarHomeView = "agenda" | "day" | "month";
 
@@ -25,9 +27,11 @@ const formatTimeRange = (startAt: string, endAt: string, allDay: boolean) => {
 };
 
 export function CalendarScreen() {
-  const { events, hydrated, hydrating, hydrateEvents, createEvent } = useCalendarStore();
+  const { events, hydrated, hydrating, hydrateEvents, createEvent, updateEvent } = useCalendarStore();
   const [activeView, setActiveView] = useState<CalendarHomeView>("agenda");
   const [focusDate, setFocusDate] = useState<Date>(() => new Date());
+  const [editingEvent, setEditingEvent] = useState<CalendarEventRecord | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -116,6 +120,24 @@ export function CalendarScreen() {
       if (activeView === "day") return addDays(current, direction);
       return addDays(current, direction * 7);
     });
+  };
+
+  const openCreate = () => {
+    setCreating(true);
+    setEditingEvent(null);
+  };
+
+  const openEdit = (event: CalendarEventRecord) => {
+    setCreating(false);
+    setEditingEvent(event);
+  };
+
+  const handleSaveEvent = async (input: CreateCalendarEventInput, eventId?: number) => {
+    if (eventId !== undefined) {
+      await updateEvent(eventId, input);
+      return;
+    }
+    await createEvent(input);
   };
 
   return (
@@ -211,7 +233,9 @@ export function CalendarScreen() {
                 {monthSelectedDayEvents.map((event) => (
                   <article key={event.id} className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="line-clamp-1 text-xs font-medium text-slate-100">{event.title}</h3>
+                      <button type="button" onClick={() => openEdit(event)} className="line-clamp-1 text-left text-xs font-medium text-slate-100">
+                        {event.title}
+                      </button>
                       {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
                     </div>
                     <p className="mt-0.5 text-[11px] text-slate-300">{formatTimeRange(event.startAt, event.endAt, event.allDay)}</p>
@@ -263,7 +287,9 @@ export function CalendarScreen() {
                 {dayAllDayEvents.map((event) => (
                   <article key={event.id} className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2.5">
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
+                      <button type="button" onClick={() => openEdit(event)} className="line-clamp-1 text-left text-sm font-medium text-slate-100">
+                        {event.title}
+                      </button>
                       {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
@@ -287,7 +313,9 @@ export function CalendarScreen() {
                     </div>
                     <div className="rounded-lg border border-noema-borderSoft bg-slate-950/65 p-2.5">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="line-clamp-1 text-sm font-medium text-slate-100">{event.title}</h3>
+                        <button type="button" onClick={() => openEdit(event)} className="line-clamp-1 text-left text-sm font-medium text-slate-100">
+                          {event.title}
+                        </button>
                         {event.colorTag && <span className="rounded-full border border-noema-borderSoft px-1.5 py-0.5 text-[10px] text-slate-200">{event.colorTag}</span>}
                       </div>
                       <p className="mt-1 text-[11px] text-slate-300">{formatTimeRange(event.startAt, event.endAt, event.allDay)}</p>
@@ -317,21 +345,22 @@ export function CalendarScreen() {
       <button
         type="button"
         aria-label="Create calendar event"
-        onClick={async () => {
-          const now = new Date();
-          const end = new Date(now.getTime() + 60 * 60 * 1000);
-          await createEvent({
-            title: "New calendar event",
-            descriptionMarkdown: "",
-            startAt: now.toISOString(),
-            endAt: end.toISOString(),
-            sourceType: "manual",
-          });
-        }}
+        onClick={openCreate}
         className="absolute bottom-0 right-1 inline-flex h-12 w-12 items-center justify-center rounded-full border border-violet-300/30 bg-violet-500/25 text-violet-100 shadow-glass"
       >
         <Icon icon="solar:add-circle-bold" className="text-2xl" />
       </button>
+
+      {(creating || editingEvent) && (
+        <CalendarEventEditorSheet
+          event={editingEvent}
+          onClose={() => {
+            setCreating(false);
+            setEditingEvent(null);
+          }}
+          onSave={handleSaveEvent}
+        />
+      )}
     </section>
   );
 }

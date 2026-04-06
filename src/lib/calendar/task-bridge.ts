@@ -11,6 +11,10 @@ export const projectTaskToCalendarEventInput = (task: TaskRecord): CreateCalenda
     startAt: start.toISOString(),
     endAt: end.toISOString(),
     sourceType: "task_projection",
+    sourceRef: {
+      taskProjectionId: `task-${task.id}`,
+      projectedAt: new Date().toISOString(),
+    },
     linkedTaskId: task.id,
     reminderEnabled: task.reminderEnabled,
     reminderAt: task.reminderAt,
