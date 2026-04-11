@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import { db } from "@/lib/db/client";
 import { createCalendarEventRecord } from "@/lib/calendar/contract";
+import { recurrenceRuleFromPreset } from "@/lib/calendar/recurrence";
+import { deriveCalendarReminderState } from "@/lib/calendar/reminders";
 import { normalizeMarkdownSource } from "@/lib/markdown/contract";
 import type { CalendarEventRecord, CreateCalendarEventInput } from "@/types/calendar";
 
@@ -28,7 +30,23 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({ hydrating: true });
     try {
       const events = await db.calendarEvents.toArray();
-      set({ events: sortEvents(events), hydrated: true });
+      const normalized = events.map((event) => {
+        const reminderEnabled = event.reminderEnabled ?? false;
+        const reminderAt = reminderEnabled ? event.reminderAt : undefined;
+        return {
+          ...event,
+          reminderEnabled,
+          reminderAt,
+          reminderState: deriveCalendarReminderState({
+            reminderEnabled,
+            reminderAt,
+            reminderState: event.reminderState,
+          }),
+          recurrencePreset: event.recurrencePreset ?? "none",
+          recurrenceRule: recurrenceRuleFromPreset(event.recurrencePreset ?? "none", event.recurrenceRule),
+        };
+      });
+      set({ events: sortEvents(normalized), hydrated: true });
     } finally {
       set({ hydrating: false });
     }
@@ -44,6 +62,9 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     const current = get().events.find((event) => event.id === id);
     if (!current) return;
     const updatedAt = new Date().toISOString();
+    const reminderEnabled = patch.reminderEnabled ?? current.reminderEnabled;
+    const reminderAt = reminderEnabled ? patch.reminderAt ?? current.reminderAt : undefined;
+    const recurrencePreset = patch.recurrencePreset ?? current.recurrencePreset;
     const next: Omit<CalendarEventRecord, "id" | "createdAt"> & { updatedAt: string } = {
       title: patch.title?.trim() ?? current.title,
       descriptionMarkdown:
@@ -60,9 +81,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
       linkedDocumentId: patch.linkedDocumentId ?? current.linkedDocumentId,
       sourceType: patch.sourceType ?? current.sourceType,
       sourceRef: patch.sourceRef ?? current.sourceRef,
-      reminderEnabled: patch.reminderEnabled ?? current.reminderEnabled,
-      reminderAt: patch.reminderAt ?? current.reminderAt,
-      recurrenceRule: patch.recurrenceRule ?? current.recurrenceRule,
+      reminderEnabled,
+      reminderAt,
+      reminderState: deriveCalendarReminderState({
+        reminderEnabled,
+        reminderAt,
+        reminderState: patch.reminderState ?? current.reminderState,
+      }),
+      lastReminderAttemptAt: patch.lastReminderAttemptAt ?? current.lastReminderAttemptAt,
+      reminderNote: patch.reminderNote ?? current.reminderNote,
+      recurrencePreset,
+      recurrenceRule: recurrenceRuleFromPreset(recurrencePreset, patch.recurrenceRule ?? current.recurrenceRule),
       isPinned: patch.isPinned ?? current.isPinned,
       updatedAt,
     };

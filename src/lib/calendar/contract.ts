@@ -1,4 +1,6 @@
 import { MARKDOWN_STORAGE_CONTRACT, normalizeMarkdownSource } from "@/lib/markdown/contract";
+import { recurrenceRuleFromPreset } from "@/lib/calendar/recurrence";
+import { deriveCalendarReminderState } from "@/lib/calendar/reminders";
 import type { CalendarEventRecord, CreateCalendarEventInput } from "@/types/calendar";
 
 const normalizeText = (value?: string) => value?.trim() || undefined;
@@ -6,6 +8,9 @@ const normalizeText = (value?: string) => value?.trim() || undefined;
 export function createCalendarEventRecord(input: CreateCalendarEventInput): Omit<CalendarEventRecord, "id"> {
   const now = new Date().toISOString();
   const timezone = input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const recurrencePreset = input.recurrencePreset ?? "none";
+  const reminderEnabled = input.reminderEnabled ?? false;
+  const reminderAt = reminderEnabled ? input.reminderAt : undefined;
 
   return {
     title: input.title.trim() || "Untitled event",
@@ -24,9 +29,17 @@ export function createCalendarEventRecord(input: CreateCalendarEventInput): Omit
     linkedDocumentId: input.linkedDocumentId,
     sourceType: input.sourceType ?? "manual",
     sourceRef: input.sourceRef,
-    reminderEnabled: input.reminderEnabled ?? false,
-    reminderAt: input.reminderEnabled ? input.reminderAt : undefined,
-    recurrenceRule: normalizeText(input.recurrenceRule),
+    reminderEnabled,
+    reminderAt,
+    reminderState: deriveCalendarReminderState({
+      reminderEnabled,
+      reminderAt,
+      reminderState: input.reminderState,
+    }),
+    lastReminderAttemptAt: input.lastReminderAttemptAt,
+    reminderNote: normalizeText(input.reminderNote),
+    recurrencePreset,
+    recurrenceRule: recurrenceRuleFromPreset(recurrencePreset, normalizeText(input.recurrenceRule)),
     isPinned: input.isPinned ?? false,
   };
 }

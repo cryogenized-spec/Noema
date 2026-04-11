@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { CalendarEventRecord, CreateCalendarEventInput } from "@/types/calendar";
+import { RECURRENCE_PRESETS, recurrenceRuleFromPreset } from "@/lib/calendar/recurrence";
+import { deriveCalendarReminderState } from "@/lib/calendar/reminders";
+import type { CalendarEventRecord, CalendarRecurrencePreset, CreateCalendarEventInput } from "@/types/calendar";
 
 interface CalendarEventEditorSheetProps {
   event: CalendarEventRecord | null;
@@ -34,8 +36,11 @@ export function CalendarEventEditorSheet({ event, onClose, onSave }: CalendarEve
   const [locationText, setLocationText] = useState(event?.locationText ?? "");
   const [reminderEnabled, setReminderEnabled] = useState(event?.reminderEnabled ?? false);
   const [reminderAt, setReminderAt] = useState(event?.reminderAt ?? "");
+  const [reminderNote, setReminderNote] = useState(event?.reminderNote ?? "");
   const [colorTag, setColorTag] = useState(event?.colorTag ?? "");
   const [linkedTaskId, setLinkedTaskId] = useState(event?.linkedTaskId ? String(event.linkedTaskId) : "");
+  const [recurrencePreset, setRecurrencePreset] = useState<CalendarRecurrencePreset>(event?.recurrencePreset ?? "none");
+  const [recurrenceRule, setRecurrenceRule] = useState(event?.recurrenceRule ?? "");
   const [saving, setSaving] = useState(false);
 
   const validationError = useMemo(() => {
@@ -44,6 +49,10 @@ export function CalendarEventEditorSheet({ event, onClose, onSave }: CalendarEve
     if (new Date(endAt).getTime() < new Date(startAt).getTime()) return "End time cannot be before start time.";
     return "";
   }, [endAt, startAt, title]);
+  const reminderState = useMemo(
+    () => deriveCalendarReminderState({ reminderEnabled, reminderAt, reminderState: event?.reminderState }),
+    [event?.reminderState, reminderAt, reminderEnabled],
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/50" onClick={onClose}>
@@ -152,6 +161,47 @@ export function CalendarEventEditorSheet({ event, onClose, onSave }: CalendarEve
                 className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
               />
             </label>
+            <label className="mt-2 block text-xs text-slate-300">
+              Reminder note
+              <input
+                disabled={!reminderEnabled}
+                value={reminderNote}
+                onChange={(event) => setReminderNote(event.target.value)}
+                placeholder="Optional reminder note"
+                className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 disabled:opacity-50"
+              />
+            </label>
+            <p className="mt-2 text-[11px] text-slate-400">
+              State: <span className="text-slate-300">{reminderState}</span>
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-noema-borderSoft bg-slate-950/50 p-2">
+            <label className="block text-xs text-slate-300">
+              Recurrence
+              <select
+                value={recurrencePreset}
+                onChange={(event) => setRecurrencePreset(event.target.value as CalendarRecurrencePreset)}
+                className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100"
+              >
+                {RECURRENCE_PRESETS.map((preset) => (
+                  <option key={preset.value} value={preset.value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {recurrencePreset === "custom" && (
+              <label className="mt-2 block text-xs text-slate-300">
+                Custom recurrence rule
+                <input
+                  value={recurrenceRule}
+                  onChange={(event) => setRecurrenceRule(event.target.value)}
+                  placeholder="e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR"
+                  className="mt-1 w-full rounded-lg border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100"
+                />
+              </label>
+            )}
           </div>
         </div>
 
@@ -179,8 +229,12 @@ export function CalendarEventEditorSheet({ event, onClose, onSave }: CalendarEve
                     locationText: locationText.trim() || undefined,
                     reminderEnabled,
                     reminderAt: reminderEnabled ? reminderAt || undefined : undefined,
+                    reminderState,
+                    reminderNote: reminderEnabled ? reminderNote.trim() || undefined : undefined,
                     colorTag: colorTag.trim() || undefined,
                     linkedTaskId: linkedTaskId ? Number(linkedTaskId) || undefined : undefined,
+                    recurrencePreset,
+                    recurrenceRule: recurrenceRuleFromPreset(recurrencePreset, recurrenceRule),
                   },
                   event?.id,
                 );

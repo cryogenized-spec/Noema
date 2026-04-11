@@ -218,6 +218,10 @@ Noema now treats **raw markdown strings** as the canonical text format for displ
 - Month view now uses a mobile-friendly grid with current-day and selected-day highlighting, subtle event density indicators, and a linked selected-day event panel below the grid.
 - Calendar events now support mobile create/edit via a dedicated event sheet (title, markdown description, start/end, all-day, timezone, location, reminder, color tag, linked task ID) with explicit Save and validation.
 - Tasks and Calendar are now bridged for first-pass scheduling: task action sheets can project due tasks into linked calendar events (`sourceType: task_projection`, `linkedTaskId`), and task cards show a “Scheduled” indicator when linked events exist.
+- Calendar reminder groundwork now includes `reminderState`, optional `reminderNote`, and reminder candidate utilities for future in-app/push dispatch integration.
+- Calendar recurrence groundwork now includes a simple preset UX (`none`, `daily`, `weekly`, `monthly`, `custom`) backed by `recurrencePreset` + `recurrenceRule` utilities for future recurring instance expansion.
+- Calendar now includes a mobile actions layer: long-press (or context press) on events opens a bottom sheet with open/edit/duplicate, quick reschedule presets (later today/tomorrow/next week), compact datetime reschedule, complete/cancel/archive, and guarded delete.
+- Calendar now includes AI-assisted event intake: FAB opens an intake launcher, fuzzy requests can be structured into an editable guided draft with targeted clarifications, and users confirm/edit/discard before save.
 - Deferred in this phase: full Calendar scheduling, always-on background reminder automation, and autonomous task agents.
 - Deferred:
   - deeper project/task views beyond single-task edit surface

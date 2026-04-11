@@ -1,5 +1,7 @@
 export type CalendarEventStatus = "scheduled" | "completed" | "cancelled" | "archived";
 export type CalendarEventSourceType = "manual" | "task_projection" | "ai_intake" | "import";
+export type CalendarReminderState = "disabled" | "scheduled" | "due" | "sent" | "failed";
+export type CalendarRecurrencePreset = "none" | "daily" | "weekly" | "monthly" | "custom";
 
 export interface CalendarEventSourceRef {
   taskProjectionId?: string;
@@ -28,6 +30,10 @@ export interface CalendarEventRecord {
   sourceRef?: CalendarEventSourceRef;
   reminderEnabled: boolean;
   reminderAt?: string;
+  reminderState: CalendarReminderState;
+  lastReminderAttemptAt?: string;
+  reminderNote?: string;
+  recurrencePreset: CalendarRecurrencePreset;
   recurrenceRule?: string;
   isPinned: boolean;
 }
@@ -49,6 +55,10 @@ export interface CreateCalendarEventInput {
   sourceRef?: CalendarEventSourceRef;
   reminderEnabled?: boolean;
   reminderAt?: string;
+  reminderState?: CalendarReminderState;
+  lastReminderAttemptAt?: string;
+  reminderNote?: string;
+  recurrencePreset?: CalendarRecurrencePreset;
   recurrenceRule?: string;
   isPinned?: boolean;
 }

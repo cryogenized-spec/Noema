@@ -112,6 +112,17 @@ class NoemaDatabase extends Dexie {
       calendarEvents:
         "++id, title, startAt, endAt, status, allDay, timezone, linkedTaskId, linkedDocumentId, sourceType, reminderEnabled, reminderAt, updatedAt, isPinned",
     });
+
+    this.version(9).stores({
+      messages: "++id, threadKey, role, kind, createdAt",
+      agents: "++id, name, providerId, updatedAt",
+      threads: "++id, threadKey, updatedAt",
+      documents: "++id, title, updatedAt, isArchived, isPinned, sourceType, *tags, folderId",
+      attachments: "++id, documentId, type, fileName, mimeType, localRef, createdAt",
+      tasks: "++id, title, status, priority, dueAt, reminderAt, reminderEnabled, reminderState, updatedAt, isPinned, sourceType, *tags, folderId",
+      calendarEvents:
+        "++id, title, startAt, endAt, status, allDay, timezone, linkedTaskId, linkedDocumentId, sourceType, reminderEnabled, reminderAt, reminderState, recurrencePreset, updatedAt, isPinned",
+    });
   }
 }
 
