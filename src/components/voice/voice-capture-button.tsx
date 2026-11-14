@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useSttStore } from "@/store/stt-store";
+import { useLockboxStore } from "@/store/lockbox-store";
 import type { SttError } from "@/types/stt";
 
 const PREFERRED_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
@@ -16,6 +17,7 @@ interface VoiceCaptureButtonProps {
 
 export function VoiceCaptureButton({ onTranscript, onError, className = "", compact = false }: VoiceCaptureButtonProps) {
   const { provider, openaiModel, language, rememberLastProvider, hydrate, hydrated } = useSttStore();
+  const revealKey = useLockboxStore((state) => state.revealKey);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -104,6 +106,7 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
       const file = new File([blob], `recording.${extension}`, { type: blob.type || "audio/webm" });
       const form = new FormData();
       form.set("provider", rememberLastProvider ? provider : "openai");
+      form.set("apiKey", await revealKey("openai"));
       form.set("openaiModel", openaiModel);
       if (language) form.set("language", language);
       form.set("audio", file);

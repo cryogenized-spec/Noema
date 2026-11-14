@@ -3,6 +3,7 @@ import type { OpenAiTranscriptionModel, SttError, SttProviderId } from "@/types/
 export interface SttTranscriptionRequest {
   provider: SttProviderId;
   audio: File;
+  apiKey?: string;
   openaiModel?: OpenAiTranscriptionModel;
   language?: string;
 }

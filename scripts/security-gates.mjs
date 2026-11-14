@@ -4,6 +4,7 @@ const forbidden = [
   ["src/lib/security/secret-codec.ts", /PlainTextCodec/],
   ["src/lib/ai/provider-registry.ts", /mockProvider\s*;\s*$/m],
   ["src/app/api/agent/route.ts", /process\.env\.OPENAI_API_KEY/],
+  ["src/lib/stt/providers/openai-stt.ts", /process\.env\.OPENAI_API_KEY/],
 ];
 let failures = 0;
 for (const [file, regex] of forbidden) {

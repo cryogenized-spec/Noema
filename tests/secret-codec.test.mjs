@@ -11,7 +11,7 @@ test("lockbox stores randomized AES-GCM ciphertext and fails closed", async () =
   assert.equal(a.includes("secret"),false);
   assert.equal(await secretCodec.decode(a),"secret");
   lockVault();
-  await assert.rejects(() => secretCodec.decode(a));
+  assert.throws(() => secretCodec.decode(a));
   await assert.rejects(() => unlockVault("the wrong passphrase"));
   await unlockVault("a long unique test passphrase");
   assert.equal(await secretCodec.decode(b),"secret");
