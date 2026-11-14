@@ -3,15 +3,15 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "Noema",
-    short_name: "Noema",
+    name: "NOEMA",
+    short_name: "NOEMA",
     description: "A calm, local-first communication and intelligence app.",
     start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#090f25",
-    theme_color: "#090f25",
+    background_color: "#070707",
+    theme_color: "#070707",
     icons: [
       {
         src: "/icons/icon-192.svg",
