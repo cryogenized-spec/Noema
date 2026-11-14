@@ -4,7 +4,9 @@ const b64 = (a: Uint8Array) => btoa(Array.from(a, (n) => String.fromCharCode(n))
 const un64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 async function derive(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 310000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  const saltBuffer = new ArrayBuffer(salt.byteLength);
+  new Uint8Array(saltBuffer).set(salt);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: saltBuffer, iterations: 310000, hash: "SHA-256" }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 async function seal(text: string, k: CryptoKey): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
