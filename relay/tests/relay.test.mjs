@@ -6,6 +6,7 @@ import { fingerprint, b64url, proofBytes } from "../src/protocol.mjs";
 function memoryStore() {
   const data = new Map();
   return {
+    data,
     get: async (key) => data.get(key),
     put: async (key, value) => { data.set(key, value); },
     delete: async (key) => { data.delete(key); },
@@ -85,4 +86,75 @@ test("invite is single-use, sessions are signed, messages are idempotent and sco
   assert.equal(claim.status,200);
   assert.equal((await call(room,"/v1/threads/"+thread.id+"/agent-claim",
     {seq:1},owner.token)).status,429);
+});
+
+test("a billed source message can never trigger a second paid request", async () => {
+  const storage = memoryStore();
+  const room = new NoemaRelayRoom({storage}, {});
+  const owner = await register(room), guest = await register(room);
+  const invite = await call(room,"/v1/invites",{alias:"Owner"},owner.token);
+  const redeemed = await call(room,"/v1/invites/redeem",
+    {token:invite.json.token,alias:"Visitor"},guest.token);
+  const id = redeemed.json.thread.id;
+  await call(room,"/v1/threads/"+id+"/messages",
+    {clientMessageId:"guest-message-00000001",content:"Hello"},guest.token);
+  await call(room,"/v1/threads/"+id+"/reception",{enabled:true},owner.token);
+  const claim = await call(room,"/v1/threads/"+id+"/agent-claim",{seq:1},owner.token);
+  assert.equal(claim.status,200);
+
+  let billed = 0;
+  const oldFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => {
+      billed++;
+      return new Response("data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n" +
+        "data: {\"type\":\"response.completed\"}\n\n", {
+        status:200, headers:{"Content-Type":"text/event-stream"},
+      });
+    };
+    const payload = {seq:1,claimToken:claim.json.claimToken,apiKey:"sk-nonproduction-test-placeholder"};
+    assert.equal((await room.fetch(request("/v1/threads/"+id+"/agent-response",
+      payload,owner.token))).status,200);
+    const repeated = await call(room,"/v1/threads/"+id+"/agent-response",payload,owner.token);
+    assert.equal(repeated.status,401);
+    assert.equal((await call(room,"/v1/threads/"+id+"/agent-claim",{seq:1},owner.token)).status,429);
+    assert.equal(billed,1);
+    const pending = await call(room,"/v1/reception/pending",{},owner.token,"GET");
+    assert.equal(pending.status,200);
+    assert.equal(pending.json.pending.length,0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+test("expired unbilled leases can be reclaimed but consumed ones cannot", async () => {
+  const storage = memoryStore();
+  const room = new NoemaRelayRoom({storage}, {});
+  const owner = await register(room), guest = await register(room);
+  const invite = await call(room,"/v1/invites",{},owner.token);
+  const join = await call(room,"/v1/invites/redeem",{token:invite.json.token},guest.token);
+  const id = join.json.thread.id;
+  await call(room,"/v1/threads/"+id+"/messages",
+    {clientMessageId:"visitor-message-00000001",content:"Question"},guest.token);
+  await call(room,"/v1/threads/"+id+"/reception",{enabled:true},owner.token);
+  const initial = await call(room,"/v1/threads/"+id+"/agent-claim",{seq:1},owner.token);
+  assert.equal(initial.status,200);
+  const leaseKey = "claim:" + id + ":1";
+  const lease = storage.data.get(leaseKey);
+  storage.data.set(leaseKey, { ...lease, expiresAt:Date.now() - 1000 });
+  const renewed = await call(room,"/v1/threads/"+id+"/agent-claim",{seq:1},owner.token);
+  assert.equal(renewed.status,200);
+  assert.notEqual(initial.json.claimToken,renewed.json.claimToken);
+});
+test("allowed browser origins receive CORS headers even on malformed input", async () => {
+  const room = new NoemaRelayRoom({storage:memoryStore()}, {});
+  const entry = (await import("../src/index.mjs")).default;
+  const req = new Request(ROOT+"/v1/auth/challenge", {
+    method:"POST", headers:{Origin:"https://noema.example",
+      "Content-Type":"application/json"}, body:"{",
+  });
+  const env = {
+    APP_ORIGIN:"https://noema.example",
+    NOEMA_ROOM:{ idFromName:()=> "pilot", get:()=> ({fetch:(request)=>room.fetch(request)}) },
+  };
+  const res = await entry.fetch(req,env);
+  assert.equal(res.status,400);
+  assert.equal(res.headers.get("Access-Control-Allow-Origin"),"https://noema.example");
 });
