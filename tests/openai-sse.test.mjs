@@ -16,3 +16,26 @@ test("failed stream is rejected, never shown as success", async () => {
   const b = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"type":"response.failed"}\n\n')); c.close(); } });
   await assert.rejects(() => readOpenAIStream(b, async () => {}));
 });
+
+test("many complete SSE frames can share one large transport chunk", async () => {
+  const events = Array.from({length:2000}, () =>
+    'data: {"type":"response.output_text.delta","delta":"x"}\n\n').join("") +
+    'data: {"type":"response.completed"}\n\n';
+  const body = new ReadableStream({ start(c) {
+    c.enqueue(new TextEncoder().encode(events)); c.close();
+  } });
+  const text = await readOpenAIStream(body, async () => {});
+  assert.equal(text.length, 2000);
+});
+test("callback errors cancel the underlying paid stream", async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode(
+      'data: {"type":"response.output_text.delta","delta":"text"}\n\n')); },
+    cancel() { cancelled = true; },
+  });
+  await assert.rejects(() => readOpenAIStream(body, async () => {
+    throw new Error("Storage unavailable.");
+  }));
+  assert.equal(cancelled, true);
+});

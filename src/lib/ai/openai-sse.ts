@@ -1,4 +1,4 @@
-/** Consume actual Responses SSE output_text.delta events, not simulated typing. */
+/** Parse real Responses SSE frames. Transport reads may contain many frames. */
 export async function readOpenAIStream(
   body: ReadableStream<Uint8Array>,
   onText: (assembled: string) => Promise<void>,
@@ -8,41 +8,47 @@ export async function readOpenAIStream(
   let buffer = "";
   let assembled = "";
   let completed = false;
-  const consume = async (block: string) => {
-    const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+  const consume = async (frame: string) => {
+    if (frame.length > 100000) throw Error("SSE frame too large.");
+    const data = frame.split(/\r?\n/).filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart()).join("\n");
     if (!data || data === "[DONE]") return;
-    let event: { type?: string; delta?: unknown; error?: unknown };
-    try { event = JSON.parse(data) as typeof event; } catch { throw new Error("Malformed Responses stream event."); }
+    let event: { type?: string; delta?: unknown };
+    try { event = JSON.parse(data) as typeof event; }
+    catch { throw Error("Malformed Responses stream event."); }
     if (event.type === "response.output_text.delta" && typeof event.delta === "string") {
-      if (assembled.length + event.delta.length > 36000) throw new Error("Response exceeded stream budget.");
+      if (assembled.length + event.delta.length > 36000)
+        throw Error("Response exceeded stream budget.");
       assembled += event.delta;
       await onText(assembled);
     }
     if (event.type === "response.completed") completed = true;
-    if (event.type === "error" || event.type === "response.failed" || event.type === "response.incomplete") {
-      throw new Error("OpenAI stream did not finish successfully.");
-    }
+    if (event.type === "error" || event.type === "response.failed" ||
+        event.type === "response.incomplete")
+      throw Error("OpenAI stream failed or was incomplete.");
   };
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      if (buffer.length > 100000) throw new Error("SSE frame too large.");
+      buffer += decoder.decode(value, { stream:true });
       let boundary = buffer.search(/\r?\n\r?\n/);
       while (boundary >= 0) {
-        const match = buffer.slice(boundary).match(/^\r?\n\r?\n/);
-        const width = match?.[0].length ?? 2;
+        const delimiter = buffer.slice(boundary).match(/^\r?\n\r?\n/)?.[0].length ?? 2;
         await consume(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + width);
+        buffer = buffer.slice(boundary + delimiter);
         boundary = buffer.search(/\r?\n\r?\n/);
       }
+      // Only *uncompleted frame* size matters; a transport chunk is arbitrary.
+      if (buffer.length > 100000) throw Error("SSE frame too large.");
     }
+    buffer += decoder.decode();
     if (buffer.trim()) await consume(buffer);
-    if (!completed || !assembled.trim()) throw new Error("Incomplete or empty OpenAI stream.");
+    if (!completed || !assembled.trim()) throw Error("Incomplete or empty OpenAI stream.");
     return assembled;
-  } finally {
-    reader.releaseLock();
-  }
+  } catch (error) {
+    // Failure must abort upstream generation, not merely release the reader lock.
+    try { await reader.cancel(error); } catch { /* Prefer original failure. */ }
+    throw error;
+  } finally { reader.releaseLock(); }
 }

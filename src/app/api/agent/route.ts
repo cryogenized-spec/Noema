@@ -3,6 +3,7 @@ import { executeAgentPayload } from "@/lib/runtime/execute-agent";
 import { openAIStreamResponse } from "@/lib/ai/providers/openai-provider";
 import { CONTEXT_LIMITS, boundConversation } from "@/lib/ai/context-budget";
 import type { ProviderExecutionPayload } from "@/lib/runtime/types";
+import { isLocalDevelopmentGatewayRequest } from "@/lib/security/development-gateway";
 
 export const runtime = "nodejs";
 const reject = (status: number, error: string) =>
@@ -11,13 +12,8 @@ const reject = (status: number, error: string) =>
 export async function POST(request: Request) {
   // A public unauthenticated relay is not an acceptable production deployment.
   // Explicitly opt into local development only; future messaging uses device authentication.
-  if (process.env.NOEMA_ENABLE_BYOK_AGENT_PROXY !== "true")
+  if (!isLocalDevelopmentGatewayRequest(request))
     return reject(503, "Agent proxy disabled until authenticated sessions are available.");
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try { if (new URL(origin).host !== new URL(request.url).host) return reject(403, "Cross-origin request blocked."); }
-    catch { return reject(403, "Invalid origin."); }
-  }
   let raw: string;
   try { raw = await request.text(); } catch { return reject(400, "Unreadable payload."); }
   if (raw.length > 60000) return reject(413, "Prompt payload exceeds fixed budget.");

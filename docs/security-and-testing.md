@@ -26,3 +26,7 @@ Run `npm ci`, `npm run typecheck`, `npm run typecheck:hardening`, `npm run lint`
 ## Phone-free device identity foundation
 
 Device identity is generated from an unextractable P-256 private key kept in browser IndexedDB via structured cloning. Display aliases are independent from its public-key fingerprint. Browser code can produce signed audience-scoped challenges; this alone is NOT authenticated messaging. The server must still issue random short-lived nonce challenges, enforce single-use replay protection, verify device signatures and identity fingerprints, implement recovery/revocation, and bind every action to a permitted conversation before any real invite is enabled.
+
+## Cross-tab vault safety and development API boundary
+
+New vault metadata is created under the browser Web Locks exclusive cross-tab lock, and every encryption/decryption checks the winning metadata. Without Web Locks, a new vault cannot be created. The development API and STT routes additionally require NODE_ENV=development, an explicit feature flag, a localhost request host, and an exact matching Origin header; they are inert on public production hosts, regardless of the environment flag.

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSttProvider } from "@/lib/stt/provider-registry";
 import type { OpenAiTranscriptionModel } from "@/types/stt";
+import { isLocalDevelopmentGatewayRequest } from "@/lib/security/development-gateway";
 
 export const runtime = "nodejs";
 const error = (status: number, code: string, message: string) =>
@@ -9,15 +10,8 @@ const isOpenAiModel = (value: string): value is OpenAiTranscriptionModel =>
   value === "gpt-4o-mini-transcribe" || value === "gpt-4o-transcribe";
 
 export async function POST(request: Request) {
-  if (process.env.NOEMA_ENABLE_BYOK_AGENT_PROXY !== "true")
+  if (!isLocalDevelopmentGatewayRequest(request))
     return error(503, "MISSING_PROVIDER_CONFIGURATION", "STT is disabled without a controlled BYOK development gateway.");
-  const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (new URL(origin).host !== new URL(request.url).host)
-        return error(403, "MISSING_PROVIDER_CONFIGURATION", "Origin not permitted.");
-    } catch { return error(403, "MISSING_PROVIDER_CONFIGURATION", "Invalid origin."); }
-  }
   const contentLength = Number(request.headers.get("content-length") ?? "0");
   if (!Number.isFinite(contentLength) || contentLength > 12_000_000)
     return error(413, "INVALID_AUDIO", "Voice recording exceeds upload limit.");
