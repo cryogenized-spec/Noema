@@ -102,6 +102,26 @@ export class NoemaRelayRoom {
         .slice(0, 80);
       return json({ threads });
     }
+    if (req.method === "GET" && url.pathname === "/v1/reception/pending") {
+      // One bounded poll covers every enabled owner conversation, selected or not.
+      const all = await this.state.storage.list({ prefix:"thread:" });
+      const owned = Array.from(all.values()).filter((t) =>
+        t.owner === session.deviceId && t.receptionEnabled).slice(0, 20);
+      const pending = [];
+      for (const thread of owned) {
+        const messages = await this.messages(thread.id);
+        for (const message of messages) {
+          if (message.sender !== "guest") continue;
+          const claim = await this.state.storage.get("claim:" + thread.id + ":" + message.seq);
+          if (claim?.state === "consumed" ||
+              (claim?.state === "leased" && claim.expiresAt > now())) continue;
+          pending.push({ threadId:thread.id, message });
+          if (pending.length >= 5) break;
+        }
+        if (pending.length >= 5) break;
+      }
+      return json({ pending });
+    }
     if (req.method === "POST" && url.pathname === "/v1/invites") {
       const input = await body(req);
       const token = randomToken();
@@ -190,18 +210,21 @@ export class NoemaRelayRoom {
       if (!source || source.sender !== "guest") return fail(403, "Only guest messages wake the agent.");
       const claim = await this.state.storage.transaction(async (txn) => {
         const fresh = await txn.get(threadKey(id));
-        if (!fresh || !fresh.receptionEnabled || fresh.owner !== session.deviceId) return null;
-        const key = "claim:" + id + ":" + seq;
-        if (await txn.get(key)) return null;
+        if (!fresh?.receptionEnabled || fresh.owner !== session.deviceId) return null;
+        const claimKey = "claim:" + id + ":" + seq;
+        const prior = await txn.get(claimKey);
+        if (prior?.state === "consumed" ||
+            (prior?.state === "leased" && prior.expiresAt > now())) return null;
         const dayKey = "budget:" + fresh.owner + ":" + new Date().toISOString().slice(0,10);
-        const used = Number(await txn.get(dayKey) || 0);
-        if (used >= LIMITS.agentCallsPerDay) return null;
+        if (Number(await txn.get(dayKey) || 0) >= LIMITS.agentCallsPerDay) return null;
         const token = randomToken();
-        await txn.put(key, { hash:await sha256(token), owner:fresh.owner, expiresAt:now() + 90000 });
-        await txn.put(dayKey, used + 1);
+        await txn.put(claimKey, { state:"leased", hash:await sha256(token),
+          owner:fresh.owner, expiresAt:now() + 90000 });
+        // A lease that expires before billing does not consume the daily budget.
         return token;
       });
-      return claim ? json({ claimToken:claim }) : fail(429, "Already handled or daily agent budget exhausted.");
+      return claim ? json({ claimToken:claim }) :
+        fail(429, "Already handled, actively leased, or agent budget exhausted.");
     }
     if (req.method === "POST" && action === "agent-response") {
       if (session.deviceId !== thread.owner || !thread.receptionEnabled)
@@ -214,9 +237,15 @@ export class NoemaRelayRoom {
       const valid = await this.state.storage.transaction(async (txn) => {
         const live = await txn.get(claimKey);
         const fresh = await txn.get(threadKey(id));
-        if (!live || live.owner !== session.deviceId || live.expiresAt <= now() ||
-            live.hash !== await sha256(input.claimToken) || !fresh?.receptionEnabled) return false;
-        await txn.delete(claimKey); // Consume before billable request; never silently retry.
+        if (!live || live.state !== "leased" || live.owner !== session.deviceId ||
+            live.expiresAt <= now() || live.hash !== await sha256(input.claimToken) ||
+            !fresh?.receptionEnabled || fresh.owner !== session.deviceId) return false;
+        const dayKey = "budget:" + fresh.owner + ":" + new Date().toISOString().slice(0,10);
+        const used = Number(await txn.get(dayKey) || 0);
+        if (used >= LIMITS.agentCallsPerDay) return false;
+        // Durable terminal marker stays after the first billable attempt.
+        await txn.put(claimKey, { state:"consumed", owner:fresh.owner, consumedAt:now() });
+        await txn.put(dayKey, used + 1);
         return true;
       });
       if (!valid) return fail(401, "Claim expired or already consumed.");
@@ -257,17 +286,19 @@ export default {
       headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
       headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
     }
-    if (req.method === "OPTIONS") return new Response(null, { status:204, headers });
-    if (!["GET","POST"].includes(req.method)) return fail(405, "Unsupported method.");
-    try {
-      if (!new URL(req.url).pathname.startsWith("/v1/")) return fail(404, "Route not found.");
-      const id = env.NOEMA_ROOM.idFromName("noema-pilot-v1");
-      const response = await env.NOEMA_ROOM.get(id).fetch(req);
+    const decorate = (response) => {
       const output = new Response(response.body, response);
       for (const [k,v] of Object.entries(headers)) output.headers.set(k,v);
       return output;
+    };
+    if (req.method === "OPTIONS") return decorate(new Response(null, { status:204 }));
+    if (!["GET","POST"].includes(req.method)) return decorate(fail(405, "Unsupported method."));
+    try {
+      if (!new URL(req.url).pathname.startsWith("/v1/")) return decorate(fail(404, "Route not found."));
+      const id = env.NOEMA_ROOM.idFromName("noema-pilot-v1");
+      return decorate(await env.NOEMA_ROOM.get(id).fetch(req));
     } catch {
-      return fail(400, "Invalid request.");
+      return decorate(fail(400, "Invalid request."));
     }
   },
 };
