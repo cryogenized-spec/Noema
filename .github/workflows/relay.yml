@@ -1,0 +1,25 @@
+name: NOEMA relay protocol
+on:
+  pull_request:
+    branches: [main, feat/noema-security-ci-responses-hardening]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Syntax verify
+        run: |
+          node --check relay/src/index.mjs
+          node --check relay/src/protocol.mjs
+      - name: Auth, invite, replay and messaging tests
+        run: node --test relay/tests/*.test.mjs
+      - name: Cloudflare Worker compile (no deployment)
+        run: npx --yes wrangler@4 deploy --dry-run --config relay/wrangler.jsonc --outdir /tmp/noema-relay-build
