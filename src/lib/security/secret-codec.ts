@@ -16,9 +16,9 @@ async function seal(text: string, k: CryptoKey): Promise<string> {
 async function unseal(text: string, k: CryptoKey): Promise<string> {
   const parts = text.split(":");
   if (parts.length !== 3 || parts[0] !== "v2") throw new Error("Not an encrypted vault entry.");
-  const iv = un64(parts[1]);
+  const iv = un64(parts[1] ?? "");
   if (iv.length !== 12) throw new Error("Invalid vault nonce.");
-  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, k, un64(parts[2])));
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, k, un64(parts[2] ?? "")));
 }
 export const vaultIsConfigured = (): boolean => typeof window !== "undefined" && !!window.localStorage.getItem(META_KEY);
 export const vaultIsUnlocked = (): boolean => key !== null;

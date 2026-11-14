@@ -81,6 +81,7 @@ export function ChatScreen() {
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const sendInFlight = useRef(false);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -316,26 +317,29 @@ export function ChatScreen() {
   };
 
   const sendMessage = async () => {
-    const trimmed = draft.trim();
-    if (!trimmed) return;
-
-    if (editingMessageId !== null) {
-      await updateMessage(editingMessageId, trimmed);
-      setEditingMessageId(null);
-      setDraft("");
-      return;
-    }
-
-    await addMessage({ role: "user", content: trimmed });
-    setDraft("");
-
-    if (!activeAgent || agentPending) return;
-
-    setAgentPending(true);
+    // Synchronous ref gate prevents double sends and duplicated billable calls.
+    if (sendInFlight.current) return;
+    sendInFlight.current = true;
     try {
-      await runDirectAgentReply(trimmed);
+      const trimmed = draft.trim();
+      if (!trimmed) return;
+      if (editingMessageId !== null) {
+        await updateMessage(editingMessageId, trimmed);
+        setEditingMessageId(null);
+        setDraft("");
+        return;
+      }
+      await addMessage({ role: "user", content: trimmed });
+      setDraft("");
+      if (!activeAgent || agentPending) return;
+      setAgentPending(true);
+      try {
+        await runDirectAgentReply(trimmed);
+      } finally {
+        setAgentPending(false);
+      }
     } finally {
-      setAgentPending(false);
+      sendInFlight.current = false;
     }
   };
 

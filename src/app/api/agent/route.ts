@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   };
   try {
     if (payload.streamingMode !== "oneshot") {
-      const upstream = await openAIStreamResponse(payload);
+      const upstream = await openAIStreamResponse(payload, request.signal);
       return new Response(upstream.body, {
         headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Content-Type-Options": "nosniff" },
       });

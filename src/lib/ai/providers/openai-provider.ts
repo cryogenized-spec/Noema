@@ -26,7 +26,7 @@ function requestBody(payload: ProviderExecutionPayload, stream: boolean): Record
   }
   return body;
 }
-async function callOpenAI(payload: ProviderExecutionPayload, stream: boolean): Promise<Response> {
+async function callOpenAI(payload: ProviderExecutionPayload, stream: boolean, signal?: AbortSignal): Promise<Response> {
   if (!payload.apiKey?.trim()) throw new Error("OpenAI BYOK key is missing.");
   if (payload.baseUrl && payload.baseUrl.replace(/\/$/, "") !== "https://api.openai.com/v1") {
     throw new Error("Custom OpenAI API endpoint is disallowed to prevent credential exfiltration.");
@@ -36,14 +36,14 @@ async function callOpenAI(payload: ProviderExecutionPayload, stream: boolean): P
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + payload.apiKey },
     body: JSON.stringify(requestBody(payload, stream)),
-    signal: AbortSignal.timeout(60000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000),
     cache: "no-store",
   });
   if (!response.ok) throw new Error("OpenAI request failed (HTTP " + response.status + ").");
   return response;
 }
-export async function openAIStreamResponse(payload: ProviderExecutionPayload): Promise<Response> {
-  return callOpenAI(payload, true);
+export async function openAIStreamResponse(payload: ProviderExecutionPayload, signal?: AbortSignal): Promise<Response> {
+  return callOpenAI(payload, true, signal);
 }
 export const openAIProvider: AgentProvider = {
   name: "openai",

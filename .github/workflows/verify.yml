@@ -29,6 +29,8 @@ jobs:
         run: npm ci
       - name: TypeScript
         run: npm run typecheck
+      - name: Hardening-critical TypeScript (unchecked indexes and exact optionals)
+        run: npm run typecheck:hardening
       - name: ESLint
         run: npm run lint
       - name: Security regressions
