@@ -3,14 +3,14 @@ import type { SttProviderAdapter } from "@/lib/stt/types";
 export const openAiSttProvider: SttProviderAdapter = {
   providerId: "openai",
   async transcribe(request) {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = request.apiKey;
     if (!apiKey) {
       return {
         ok: false,
         error: {
           code: "MISSING_PROVIDER_CONFIGURATION",
           message: "OpenAI transcription is not configured on the server.",
-          detail: "Set OPENAI_API_KEY in environment variables.",
+          detail: "Unlock your API Lockbox and supply an OpenAI BYOK key.",
         },
       };
     }

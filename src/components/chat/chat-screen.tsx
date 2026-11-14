@@ -18,11 +18,12 @@ import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
 import { buildAgentExecutionPayload } from "@/lib/runtime/payload-builder";
 import { createInvocationDescriptor } from "@/lib/runtime/invocation-descriptor";
 import { hasProviderAdapter } from "@/lib/ai/provider-registry";
+import { readOpenAIStream } from "@/lib/ai/openai-sse";
 import type { AgentProfile } from "@/types/agents";
 import type { ChatMessage } from "@/types/chat";
 import type { AgentInvocationMode } from "@/lib/runtime/types";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 
 const fontClassFromAgent = (agent: AgentProfile) => {
   switch (agent.fontFamily) {
@@ -80,6 +81,7 @@ export function ChatScreen() {
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const sendInFlight = useRef(false);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -233,62 +235,57 @@ export function ChatScreen() {
       return;
     }
 
-    const apiKey = await revealKey(agent.providerId);
-
-    const built = buildAgentExecutionPayload({
-      invocation: createInvocationDescriptor({
-        threadId: activeThreadKey,
-        sourceMessageId: targetMessageId,
-        sourceMessageContent: prompt,
-        agentId: agent.id ?? -1,
-        mode,
-        outputMode: outputVisibility,
-      }),
-      agent,
-      provider,
-      model,
-      providerConfig,
-      providerApiKey: apiKey,
-      prompt,
-      conversation: messages.slice(-8).map((item) => ({ role: item.role === "agent" ? "assistant" : item.role, content: item.content })),
-      streamingMode: agent.streamingMode,
-    });
-
-    if (!built.ok) {
-      await addMessage({ role: "system", content: `${built.message}${built.detail ? ` (${built.detail})` : ""}` });
-      return;
-    }
-
-    const response = await fetch("/api/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, executionPayload: built.payload }),
-    });
-
-    const payload = (await response.json()) as { content?: string; error?: unknown };
-    if (!response.ok || !payload.content) {
-      await addMessage({ role: "system", content: "Agent request failed. Check Lockbox/provider setup and try again." });
-      return;
-    }
-
-    if (agent.streamingMode === "oneshot") {
-      await insertAgentResponse(agent, payload.content, mode, outputVisibility, targetMessageId);
-      return;
-    }
-
-    const created = await insertAgentResponse(agent, "", mode, outputVisibility, targetMessageId);
-    if (!created?.id) return;
-
-    const chunks =
-      agent.streamingMode === "chunked"
-        ? payload.content.match(/.{1,80}(\s|$)/g) ?? [payload.content]
-        : payload.content.match(/.{1,28}(\s|$)/g) ?? [payload.content];
-
-    let assembled = "";
-    for (const chunk of chunks) {
-      assembled += chunk;
-      await updateMessage(created.id, assembled);
-      await sleep(agent.streamingMode === "chunked" ? 90 : 35);
+    try {
+      const apiKey = await revealKey(agent.providerId);
+      const built = buildAgentExecutionPayload({
+        invocation: createInvocationDescriptor({
+          threadId: activeThreadKey, sourceMessageId: targetMessageId, sourceMessageContent: prompt,
+          agentId: agent.id ?? -1, mode, outputMode: outputVisibility,
+        }),
+        agent, provider, model, providerConfig, providerApiKey: apiKey,
+        prompt, conversation: messages.slice(-8).map((item) => ({
+          role: item.role === "agent" ? "assistant" : item.role, content: item.content,
+        })),
+        streamingMode: agent.streamingMode,
+      });
+      if (!built.ok) {
+        await addMessage({ role: "system", content: built.message });
+        return;
+      }
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, executionPayload: built.payload }),
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const message = response.status === 503
+          ? "Agent gateway is disabled until a secure test session is configured."
+          : "OpenAI request failed. Check your model, API key and connectivity.";
+        await addMessage({ role: "system", content: message });
+        return;
+      }
+      if (agent.streamingMode === "oneshot") {
+        const result = await response.json() as { content?: string };
+        if (!result.content) throw new Error("Empty OpenAI response.");
+        await insertAgentResponse(agent, result.content, mode, outputVisibility, targetMessageId);
+        return;
+      }
+      if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream"))
+        throw new Error("OpenAI streaming was not available.");
+      const created = await insertAgentResponse(agent, "", mode, outputVisibility, targetMessageId);
+      if (!created?.id) return;
+      let lastRendered = 0;
+      const finalText = await readOpenAIStream(response.body, async (assembled) => {
+        if (assembled.length - lastRendered >= 80) {
+          await updateMessage(created.id!, assembled);
+          lastRendered = assembled.length;
+        }
+      });
+      await updateMessage(created.id, finalText);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      await addMessage({ role: "system", content: "Agent request stopped: " + message });
     }
   };
 
@@ -320,26 +317,29 @@ export function ChatScreen() {
   };
 
   const sendMessage = async () => {
-    const trimmed = draft.trim();
-    if (!trimmed) return;
-
-    if (editingMessageId !== null) {
-      await updateMessage(editingMessageId, trimmed);
-      setEditingMessageId(null);
-      setDraft("");
-      return;
-    }
-
-    await addMessage({ role: "user", content: trimmed });
-    setDraft("");
-
-    if (!activeAgent || agentPending) return;
-
-    setAgentPending(true);
+    // Synchronous ref gate prevents double sends and duplicated billable calls.
+    if (sendInFlight.current) return;
+    sendInFlight.current = true;
     try {
-      await runDirectAgentReply(trimmed);
+      const trimmed = draft.trim();
+      if (!trimmed) return;
+      if (editingMessageId !== null) {
+        await updateMessage(editingMessageId, trimmed);
+        setEditingMessageId(null);
+        setDraft("");
+        return;
+      }
+      await addMessage({ role: "user", content: trimmed });
+      setDraft("");
+      if (!activeAgent || agentPending) return;
+      setAgentPending(true);
+      try {
+        await runDirectAgentReply(trimmed);
+      } finally {
+        setAgentPending(false);
+      }
     } finally {
-      setAgentPending(false);
+      sendInFlight.current = false;
     }
   };
 

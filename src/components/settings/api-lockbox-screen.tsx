@@ -49,7 +49,7 @@ const modelSupportsSetting = (model: ProviderModel, key: string) => {
 };
 
 export function ApiLockboxScreen() {
-  const { records, hydrate, hydrated, saveProvider, removeProvider, revealKey } = useLockboxStore();
+  const { records, hydrate, hydrated, unlocked, hasVault, hasLegacy, unlock, lock, saveProvider, removeProvider, revealKey } = useLockboxStore();
   const {
     provider: sttProvider,
     openaiModel,
@@ -63,6 +63,9 @@ export function ApiLockboxScreen() {
   } = useSttStore();
   const [openProviderId, setOpenProviderId] = useState<string | null>(PROVIDER_CATALOG[0]?.id ?? null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
+  const [password, setPassword] = useState("");
+  const [vaultMessage, setVaultMessage] = useState("");
+  const [vaultError, setVaultError] = useState("");
   const [drafts, setDrafts] = useState<
     Record<
       string,
@@ -117,6 +120,24 @@ export function ApiLockboxScreen() {
         </p>
       </header>
 
+      <div className="rounded-xl border border-noema-border bg-noema-panel p-3">
+        <h3 className="text-sm font-medium text-white">Encrypted API Vault · {unlocked ? "Unlocked" : "Locked"}</h3>
+        <p className="mt-1 text-xs text-slate-400">AES-256-GCM encryption. Your passphrase is not saved. A lost passphrase cannot be recovered. Browser extensions and malicious same-origin scripts remain a threat.</p>
+        {hasLegacy && <p role="alert" className="mt-2 text-xs text-amber-300">Old plaintext credentials detected. Unlocking migrates them into encrypted storage and removes the old copy.</p>}
+        {!unlocked ? <div className="mt-3 flex flex-wrap gap-2">
+          <input type="password" autoComplete="off" placeholder={hasVault ? "Vault passphrase" : "Create 12+ character passphrase"} value={password}
+            onChange={(event) => setPassword(event.target.value)} aria-label="Vault passphrase"
+            className="min-w-48 flex-1 rounded-lg border border-noema-borderSoft bg-black px-3 py-2 text-sm text-white"/>
+          <button type="button" className="rounded-lg bg-noema-lime px-3 py-2 text-xs font-semibold text-black" onClick={async () => {
+            try { setVaultError(""); await unlock(password); setPassword(""); setVaultMessage("Vault unlocked for this tab."); }
+            catch (error) { setVaultError(error instanceof Error ? error.message : "Vault unlock failed."); }
+          }}>{hasVault ? "Unlock" : "Create & unlock"}</button>
+        </div> : <button type="button" className="mt-3 rounded-lg border border-noema-border px-3 py-2 text-xs text-white"
+          onClick={() => { lock(); setRevealedKeys({}); setDrafts((current) => Object.fromEntries(Object.entries(current).map(([id, draft]) => [id, { ...draft, apiKey: "" }]))); setVaultMessage("Vault locked."); }}>Lock now</button>}
+        {vaultMessage && <p role="status" className="mt-2 text-xs text-noema-lime">{vaultMessage}</p>}
+        {vaultError && <p role="alert" className="mt-2 text-xs text-rose-300">{vaultError}</p>}
+      </div>
+
       <div className="space-y-2">
         {PROVIDER_CATALOG.map((provider) => {
           const open = openProviderId === provider.id;
@@ -170,7 +191,8 @@ export function ApiLockboxScreen() {
                       />
                       <button
                         type="button"
-                        className="rounded-lg border border-noema-borderSoft bg-slate-900/70 px-2 text-slate-300"
+                        className="rounded-lg border border-noema-borderSoft bg-slate-900/70 px-2 text-slate-300 disabled:opacity-40"
+                        disabled={!unlocked}
                         onClick={async () => {
                           if (isRevealed) {
                             setRevealedKeys((prev) => {
@@ -180,8 +202,8 @@ export function ApiLockboxScreen() {
                             });
                             return;
                           }
-                          const key = await revealKey(provider.id);
-                          setRevealedKeys((prev) => ({ ...prev, [provider.id]: key }));
+                          try { const key = await revealKey(provider.id); setRevealedKeys((prev) => ({ ...prev, [provider.id]: key })); }
+                          catch (error) { setVaultError(error instanceof Error ? error.message : "Cannot reveal key."); }
                         }}
                       >
                         {isRevealed ? "Hide" : "Reveal"}
@@ -308,20 +330,20 @@ export function ApiLockboxScreen() {
                     <button
                       type="button"
                       className="rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-white"
+                      disabled={!unlocked}
                       onClick={async () => {
-                        await saveProvider({
-                          providerId: provider.id,
-                          apiKey: isRevealed ? revealedKey : draft.apiKey,
-                          baseUrl: draft.baseUrl,
-                          defaultModelId: draft.defaultModelId,
-                          settings: draft.settings,
-                          geminiSafety: provider.id === "gemini" ? draft.geminiSafety : undefined,
-                        });
-                        setRevealedKeys((prev) => {
-                          const next = { ...prev };
-                          delete next[provider.id];
-                          return next;
-                        });
+                        try {
+                          setVaultError("");
+                          const secret = isRevealed ? revealedKey : draft.apiKey || (configured ? await revealKey(provider.id) : "");
+                          await saveProvider({
+                            providerId: provider.id, apiKey: secret, baseUrl: draft.baseUrl,
+                            defaultModelId: draft.defaultModelId, settings: draft.settings,
+                            geminiSafety: provider.id === "gemini" ? draft.geminiSafety : undefined,
+                          });
+                          setRevealedKeys((prev) => { const next = { ...prev }; delete next[provider.id]; return next; });
+                          setDrafts((prev) => ({ ...prev, [provider.id]: { ...prev[provider.id], apiKey: "" } }));
+                          setVaultMessage(provider.displayName + " credentials encrypted and saved.");
+                        } catch (error) { setVaultError(error instanceof Error ? error.message : "Unable to save key."); }
                       }}
                     >
                       Save
@@ -329,6 +351,7 @@ export function ApiLockboxScreen() {
                     <button
                       type="button"
                       className="rounded-lg border border-noema-borderSoft bg-slate-900/65 px-3 py-2 text-xs text-slate-300"
+                      disabled={!unlocked}
                       onClick={() => removeProvider(provider.id)}
                     >
                       Remove

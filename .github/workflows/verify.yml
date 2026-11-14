@@ -1,30 +1,43 @@
-name: NOEMA verification
-
+name: NOEMA strict verification
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
-
+  workflow_dispatch:
+concurrency:
+  group: noema-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
-
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       CI: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-      - name: Install clean dependencies
+      - name: Clean install
         run: npm ci
-      - name: Typecheck
+      - name: TypeScript
         run: npm run typecheck
+      - name: Hardening-critical TypeScript (unchecked indexes and exact optionals)
+        run: npm run typecheck:hardening
+      - name: ESLint
+        run: npm run lint
+      - name: Security regressions
+        run: npm run security:gates
+      - name: Unit tests
+        run: npm run test:unit
       - name: Production build
         run: npm run build
+      - name: High and critical production dependency audit
+        run: npm audit --omit=dev --audit-level=high

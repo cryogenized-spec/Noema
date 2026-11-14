@@ -1,4 +1,5 @@
 import { composeRuntimeSystemPrompt } from "@/lib/runtime/prompt-pipeline";
+import { boundConversation } from "@/lib/ai/context-budget";
 import type { AgentExecutionBuildResult, AgentExecutionRequest, ProviderExecutionPayload } from "@/lib/runtime/types";
 import { getSupportedAgentSettings } from "@/lib/providers/compatibility";
 
@@ -55,7 +56,7 @@ export function buildAgentExecutionPayload(request: AgentExecutionRequest): Agen
     streamingMode: request.streamingMode ?? request.agent.streamingMode,
     systemPrompt: composeRuntimeSystemPrompt(request.agent, request.invocation.mode),
     prompt: request.prompt,
-    conversation: request.conversation ?? [],
+    conversation: boundConversation(request.conversation ?? []),
     generationSettings,
     apiKey: request.providerApiKey,
     baseUrl: request.providerConfig?.baseUrl,
