@@ -1,0 +1,36 @@
+name: Temporary NOEMA dependency refresh (branch only)
+on:
+  push:
+    branches: [feat/noema-security-ci-responses-hardening]
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Patch Next and audit transitive dependencies
+        run: |
+          npm install --save-exact next@15.5.29
+          npm audit fix --omit=dev
+      - name: Commit updated lockfile to this branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "No dependency changes"
+            exit 0
+          fi
+          git commit -m "chore(deps): patch Next.js and vulnerable transitive packages"
+          git -c credential.helper='!f() { echo username=x-access-token; echo password=$GH_TOKEN; }; f' push origin HEAD:feat/noema-security-ci-responses-hardening
