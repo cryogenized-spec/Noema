@@ -112,7 +112,7 @@ test("a billed source message can never trigger a second paid request", async ()
         status:200, headers:{"Content-Type":"text/event-stream"},
       });
     };
-    const payload = {seq:1,claimToken:claim.json.claimToken,apiKey:"sk-nonproduction-test-placeholder"};
+    const payload = {seq:1,claimToken:claim.json.claimToken,apiKey:"TEST_FAKE_KEY_DO_NOT_USE"};
     assert.equal((await room.fetch(request("/v1/threads/"+id+"/agent-response",
       payload,owner.token))).status,200);
     const repeated = await call(room,"/v1/threads/"+id+"/agent-response",payload,owner.token);
