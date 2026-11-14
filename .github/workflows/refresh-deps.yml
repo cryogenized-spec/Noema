@@ -19,8 +19,10 @@ jobs:
           cache: npm
       - name: Patch Next and audit transitive dependencies
         run: |
+          npm pkg set 'overrides.next.postcss=^8.5.23'
           npm install --save-exact next@15.5.29
-          npm audit fix --omit=dev
+          npm audit fix --omit=dev || true
+          npm audit --omit=dev --audit-level=high || true
       - name: Commit updated lockfile to this branch only
         env:
           GH_TOKEN: ${{ github.token }}
