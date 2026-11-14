@@ -22,3 +22,7 @@ Any public messaging/AI receptionist requires real device authentication, abuse-
 
 ## Local checks
 Run `npm ci`, `npm run typecheck`, `npm run typecheck:hardening`, `npm run lint`, `npm run security:gates`, `npm run test:unit`, `npm run build`, and `npm audit --omit=dev --audit-level=high`. No live OpenAI charges are incurred by CI. For manual testing only, enable the gateway locally, configure the vault and select an OpenAI model; verify a streamed response, an intentionally wrong key, a wrong vault passphrase, locked-mode errors and an interrupted stream. Never put a real key in repository fixtures.
+
+## Phone-free device identity foundation
+
+Device identity is generated from an unextractable P-256 private key kept in browser IndexedDB via structured cloning. Display aliases are independent from its public-key fingerprint. Browser code can produce signed audience-scoped challenges; this alone is NOT authenticated messaging. The server must still issue random short-lived nonce challenges, enforce single-use replay protection, verify device signatures and identity fingerprints, implement recovery/revocation, and bind every action to a permitted conversation before any real invite is enabled.

@@ -13,7 +13,8 @@
     "src/lib/security/secret-codec.ts",
     "src/lib/ai/context-budget.ts",
     "src/lib/ai/openai-response.ts",
-    "src/lib/ai/openai-sse.ts"
+    "src/lib/ai/openai-sse.ts",
+    "src/lib/security/device-identity.ts"
   ],
   "exclude": [
     "node_modules"
