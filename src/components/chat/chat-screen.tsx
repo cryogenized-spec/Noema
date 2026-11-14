@@ -477,11 +477,11 @@ export function ChatScreen() {
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-3"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-xl border border-noema-border bg-[#0b0b0d] p-3"
       >
         {!hasMessages ? (
-          <div className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/40 p-4 text-sm text-slate-300">
-            Start with a thought, clip, or task. Long-press a message to enter multi-select mode.
+          <div className="rounded-xl border border-dashed border-noema-border bg-[#151517] p-5 text-sm text-neutral-300">
+            Start a conversation with an idea, question, or task. Long-press any message for more actions.
           </div>
         ) : (
           messages.map((message) => (
@@ -509,18 +509,18 @@ export function ChatScreen() {
 
         {agentPending && (
           <div className="flex justify-start">
-            <div className="rounded-2xl border border-violet-300/25 bg-violet-500/16 px-3 py-2 text-xs text-slate-100">
+            <div className="rounded-2xl border border-noema-violet/30 bg-[#211928] px-3 py-2 text-xs text-white">
               Agent is replying...
             </div>
           </div>
         )}
       </div>
 
-      <div className="relative rounded-2xl border border-noema-border bg-noema-panel p-2 backdrop-blur-xl">
+      <div className="relative rounded-xl border border-noema-border bg-[#141416] p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <button
             type="button"
-            className="rounded-full border border-noema-borderSoft bg-slate-900/75 px-3 py-1 text-xs text-slate-200"
+            className="rounded-md border border-noema-border bg-black px-3 py-1.5 text-xs text-neutral-200"
             onClick={() => setShowAgentPicker((current) => !current)}
           >
             {activeAgent ? `Agent: ${activeAgent.name}` : "No active agent"}
@@ -528,7 +528,7 @@ export function ChatScreen() {
           {activeAgent && (
             <button
               type="button"
-              className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-slate-300"
+              className="rounded-md border border-noema-borderSoft px-2 py-1 text-[11px] text-neutral-300"
               onClick={() => void setThreadAgentId(activeThreadKey, null)}
             >
               Clear
@@ -537,8 +537,8 @@ export function ChatScreen() {
         </div>
 
         {showAgentPicker && (
-          <div className="mb-2 max-h-36 overflow-y-auto rounded-xl border border-noema-borderSoft bg-slate-950/85 p-2">
-            {pendingInvocation && <p className="mb-1 text-[11px] text-violet-300">Pick an agent for this invocation</p>}
+          <div className="mb-2 max-h-36 overflow-y-auto rounded-lg border border-noema-border bg-black p-2">
+            {pendingInvocation && <p className="mb-1 text-[11px] text-noema-violet">Pick an agent for this invocation</p>}
             {agents.length === 0 ? (
               <p className="text-xs text-slate-400">No agents yet. Create one in Agent Studio.</p>
             ) : (
@@ -547,7 +547,7 @@ export function ChatScreen() {
                   <button
                     key={agent.id}
                     type="button"
-                    className={`block w-full rounded-lg px-2 py-1 text-left text-xs ${activeAgentId === agent.id ? "bg-violet-500/20 text-slate-100" : "text-slate-300 hover:bg-white/5"}`}
+                    className={`block w-full rounded-lg px-2 py-1 text-left text-xs ${activeAgentId === agent.id ? "bg-noema-violet/20 text-slate-100" : "text-slate-300 hover:bg-white/5"}`}
                     onClick={async () => {
                       await setThreadAgentId(activeThreadKey, agent.id ?? null);
                       setShowAgentPicker(false);
@@ -575,7 +575,7 @@ export function ChatScreen() {
           <button
             type="button"
             aria-label="Markdown helpers"
-            className="shrink-0 rounded-xl border border-noema-borderSoft bg-slate-900/65 p-2 text-slate-300"
+            className="shrink-0 rounded-md border border-noema-border bg-black p-2 text-neutral-300"
             onClick={() => setShowMarkdownMenu((current) => !current)}
           >
             <Icon icon="solar:text-field-focus-bold" className="text-lg" />
@@ -587,7 +587,7 @@ export function ChatScreen() {
             onChange={(event) => setDraft(event.target.value)}
             rows={1}
             placeholder={activeAgent ? `Message ${activeAgent.name}` : "Message Noema"}
-            className="max-h-36 min-h-11 flex-1 resize-none rounded-xl border border-noema-borderSoft bg-slate-950/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+            className="max-h-36 min-h-11 flex-1 resize-none rounded-md border border-noema-border bg-black px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-noema-lime focus:outline-none"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -608,7 +608,7 @@ export function ChatScreen() {
             type="button"
             onClick={() => void sendMessage()}
             disabled={!draft.trim() || agentPending}
-            className="shrink-0 rounded-xl bg-violet-500 px-3 py-2 text-sm font-semibold text-white shadow-md shadow-violet-900/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="shrink-0 rounded-md bg-noema-lime px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
           >
             {editingMessageId !== null ? "Save" : "Send"}
           </button>
