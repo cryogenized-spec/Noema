@@ -1,47 +1,31 @@
 "use client";
-
 import { create } from "zustand";
 import type { GeminiSafetySettings, LockboxRecord, ProviderGenerationSettings, ProviderId } from "@/types/providers";
-import {
-  readLockbox,
-  removeProviderSecret,
-  revealProviderSecret,
-  saveProviderSecret,
-} from "@/lib/providers/lockbox-storage";
+import { readLockbox, saveProviderSecret, removeProviderSecret, revealProviderSecret, migrateLegacyLockbox, hasLegacyLockbox } from "@/lib/providers/lockbox-storage";
+import { lockVault, unlockVault, vaultIsConfigured, vaultIsUnlocked } from "@/lib/security/secret-codec";
 
 interface LockboxState {
-  records: LockboxRecord[];
-  hydrated: boolean;
-  hydrate: () => void;
-  saveProvider: (payload: {
-    providerId: ProviderId;
-    apiKey: string;
-    baseUrl: string;
-    defaultModelId: string;
-    settings: ProviderGenerationSettings;
-    geminiSafety?: GeminiSafetySettings;
-  }) => Promise<void>;
-  removeProvider: (providerId: ProviderId) => void;
-  revealKey: (providerId: ProviderId) => Promise<string>;
+  records: LockboxRecord[]; hydrated: boolean; unlocked: boolean; hasVault: boolean; hasLegacy: boolean;
+  hydrate: () => void; unlock: (password: string) => Promise<void>; lock: () => void;
+  saveProvider: (payload: { providerId: ProviderId; apiKey: string; baseUrl: string; defaultModelId: string;
+    settings: ProviderGenerationSettings; geminiSafety?: GeminiSafetySettings }) => Promise<void>;
+  removeProvider: (id: ProviderId) => void;
+  revealKey: (id: ProviderId) => Promise<string>;
 }
-
 export const useLockboxStore = create<LockboxState>((set, get) => ({
-  records: [],
-  hydrated: false,
-  hydrate: () => {
-    if (get().hydrated) return;
-    set({ records: readLockbox(), hydrated: true });
+  records: [], hydrated: false, unlocked: false, hasVault: false, hasLegacy: false,
+  hydrate: () => set({ records: readLockbox(), hydrated: true, unlocked: vaultIsUnlocked(),
+    hasVault: vaultIsConfigured(), hasLegacy: hasLegacyLockbox() }),
+  unlock: async (password) => {
+    await unlockVault(password);
+    try { await migrateLegacyLockbox(); } catch (error) { lockVault(); throw error; }
+    set({ records: readLockbox(), hydrated: true, unlocked: true, hasVault: true, hasLegacy: false });
   },
-  saveProvider: async (payload) => {
-    const records = await saveProviderSecret(payload);
-    set({ records });
-  },
-  removeProvider: (providerId) => {
-    const records = removeProviderSecret(providerId);
-    set({ records });
-  },
-  revealKey: async (providerId) => {
-    const record = get().records.find((item) => item.providerId === providerId);
-    return revealProviderSecret(record);
+  lock: () => { lockVault(); set({ unlocked: false }); },
+  saveProvider: async (payload) => { const records = await saveProviderSecret(payload); set({ records }); },
+  removeProvider: (id) => { const records = removeProviderSecret(id); set({ records }); },
+  revealKey: async (id) => {
+    if (!get().unlocked) throw new Error("Unlock API Lockbox first.");
+    return revealProviderSecret(get().records.find((row) => row.providerId === id));
   },
 }));
