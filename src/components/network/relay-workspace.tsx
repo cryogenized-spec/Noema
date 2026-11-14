@@ -6,7 +6,7 @@ import { useLockboxStore } from "@/store/lockbox-store";
 import { readOpenAIStream } from "@/lib/ai/openai-sse";
 import {
   ensureRelaySession, relayAvailable, relayOrigin, relayFetch,
-  relayGetMessages, relayGetThreads, relayPostMessage,
+  relayGetMessages, relayGetThreads, relayPostMessage, RelayError,
   type RelayMessage, type RelaySession, type RelayThread,
 } from "@/lib/network/relay-client";
 
@@ -27,6 +27,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
   const [workingAgent, setWorkingAgent] = useState(false);
+  const [inviteConsumed, setInviteConsumed] = useState(false);
   const { unlocked, revealKey, records, hydrate } = useLockboxStore();
   const activeIdRef = useRef("");
   const runningRef = useRef(false);
@@ -34,6 +35,8 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const handled = useRef(new Set<string>());
   const stopped = useRef(false);
   const agentController = useRef<AbortController | null>(null);
+  const activeAgentThread = useRef<string | null>(null);
+  const lastRenewAttempt = useRef(0);
 
   useEffect(() => { hydrate(); }, [hydrate]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -49,63 +52,92 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const refresh = useCallback(async () => {
     if (!session || runningRef.current) return;
     runningRef.current = true;
+    const renew = async () => {
+      if (Date.now() - lastRenewAttempt.current < 30000) {
+        throw new Error("Relay session renewal is temporarily unavailable.");
+      }
+      lastRenewAttempt.current = Date.now();
+      const next = await ensureRelaySession(true);
+      if (!stopped.current) setSession(next);
+    };
     try {
+      // Renewal does not depend on which thread is visible.
+      if (new Date(session.expiresAt).getTime() - Date.now() < 120000) {
+        await renew();
+        return;
+      }
       const inbox = await relayGetThreads(session);
       if (stopped.current) return;
       setThreads(inbox.threads);
-      const id = activeIdRef.current;
-      if (!id) return;
-      const conversation = inbox.threads.find((t) => t.id === id);
-      if (!conversation) return;
-      const response = await relayGetMessages(session, id);
-      if (stopped.current) return;
-      setMessages(response.messages);
-      // Only an unlocked owner tab may wake the disclosed reception agent.
-      if (!agentRunning.current && conversation.owner === session.deviceId &&
-          conversation.receptionEnabled && unlocked) {
-        const next = response.messages.find((m) =>
-          m.sender === "guest" && !handled.current.has(m.id));
-        if (next) {
-          handled.current.add(next.id);
+      const selectedId = activeIdRef.current;
+      if (selectedId && inbox.threads.some((thread) => thread.id === selectedId)) {
+        const response = await relayGetMessages(session, selectedId);
+        // A previous selected thread's delayed response must not repaint the new one.
+        if (!stopped.current && activeIdRef.current === selectedId)
+          setMessages(response.messages);
+      }
+
+      // One global authenticated query covers every ON owner thread.
+      // The active conversation is a display choice, not a reception filter.
+      if (!agentRunning.current && unlocked) {
+        const pending = await relayFetch<{pending:Array<{threadId:string; message:RelayMessage}>}>(
+          "/v1/reception/pending", {session},
+        );
+        const item = pending.pending.find((entry) => !handled.current.has(entry.message.id));
+        if (item) {
+          const id = item.threadId, next = item.message;
           agentRunning.current = true;
           setWorkingAgent(true);
           const controller = new AbortController();
           agentController.current = controller;
+          activeAgentThread.current = id;
           try {
-            const claim = await relayFetch<{claimToken:string}>(
-              "/v1/threads/" + id + "/agent-claim",
-              {session, method:"POST", body:{seq:next.seq}, signal:controller.signal},
-            );
+            // Unlock before taking a paid-request lease so failed unlocks cost nothing.
             const apiKey = await revealKey("openai");
-            const model = records.find((r) => r.providerId === "openai")?.defaultModelId || "gpt-4.1-mini";
+            const model = records.find((record) => record.providerId === "openai")?.defaultModelId || "gpt-4.1-mini";
+            const claim = await relayFetch<{claimToken:string}>(
+              "/v1/threads/" + id + "/agent-claim", {
+                session, method:"POST", body:{seq:next.seq}, signal:controller.signal,
+              },
+            );
+            handled.current.add(next.id);
             const upstream = await fetch(relayOrigin + "/v1/threads/" + id + "/agent-response", {
               method:"POST", signal:controller.signal,
               headers:{ Authorization:"Bearer " + session.token, "Content-Type":"application/json" },
               body:JSON.stringify({ seq:next.seq, claimToken:claim.claimToken, apiKey, model }),
               cache:"no-store",
             });
-            if (!upstream.ok || !upstream.body) throw new Error("Reception provider unavailable.");
+            if (!upstream.ok || !upstream.body) throw Error("Reception provider unavailable.");
             const reply = await readOpenAIStream(upstream.body, async () => {});
-            if (controller.signal.aborted) return;
-            // Deterministic ID prevents duplicate replies after a reconnect.
+            if (controller.signal.aborted || stopped.current) return;
             await relayPostMessage(session, id, reply.slice(0, 4000),
-              "agent-response-" + String(next.seq).padStart(12, "0"), true);
-            const after = await relayGetMessages(session, id);
-            if (!stopped.current) setMessages(after.messages);
-          } catch (e:unknown) {
+              "agent-response-" + String(next.seq).padStart(12,"0"), true);
+            if (activeIdRef.current === id) {
+              const after = await relayGetMessages(session, id);
+              if (!stopped.current && activeIdRef.current === id)
+                setMessages(after.messages);
+            }
+          } catch (error:unknown) {
             if (!controller.signal.aborted && !stopped.current) {
-              setNotice("The agent could not answer. You can reply manually.");
-              setError(prettyError(e));
+              setNotice("The agent could not answer this message. You can reply manually.");
+              setError(prettyError(error));
             }
           } finally {
             agentRunning.current = false;
             agentController.current = null;
+            activeAgentThread.current = null;
             if (!stopped.current) setWorkingAgent(false);
           }
         }
       }
-    } catch (e:unknown) {
-      if (!stopped.current) setError(prettyError(e));
+    } catch (error:unknown) {
+      if (!stopped.current) {
+        if (error instanceof RelayError && error.status === 401) {
+          try { await renew(); } catch (renewError:unknown) { setError(prettyError(renewError)); }
+        } else {
+          setError(prettyError(error));
+        }
+      }
     } finally { runningRef.current = false; }
   }, [session, unlocked, revealKey, records]);
 
@@ -143,6 +175,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
     activeIdRef.current = response.thread.id;
     setThreads((previous) => [response.thread, ...previous]);
     setNotice("Connected. Nothing was sent to the recipient yet.");
+    setInviteConsumed(true);
     // Immediately scrub the one-use secret from the address bar.
     window.history.replaceState(null, "", "/connect");
     await refresh();
@@ -152,14 +185,15 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
     const text = draft.trim();
     await relayPostMessage(session,activeId,text,newClientId());
     setDraft("");
-    const reply = await relayGetMessages(session,activeId);
-    setMessages(reply.messages);
+    const id = activeId;
+    const reply = await relayGetMessages(session,id);
+    if (activeIdRef.current === id) setMessages(reply.messages);
   });
   const toggleReception = () => run(async () => {
     if (!session || !activeThread || !isOwner) return;
     const enabled = !activeThread.receptionEnabled;
     if (enabled && !unlocked) throw Error("Unlock the OpenAI API Lockbox in Settings first. Leave this browser open.");
-    if (!enabled) agentController.current?.abort();
+    if (!enabled && activeAgentThread.current === activeId) agentController.current?.abort();
     await relayFetch("/v1/threads/" + activeId + "/reception", {
       session, method:"POST", body:{enabled},
     });
@@ -187,7 +221,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
       {notice && <p role="status" className="rounded-md border border-noema-lime/30 p-3 text-sm text-noema-lime">{notice}</p>}
       <section className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="flex flex-col gap-4 rounded-xl border border-noema-border bg-[#111113] p-4">
-          {inviteToken ? (
+          {inviteToken && !inviteConsumed ? (
             <div className="space-y-3">
               <h2 className="text-lg font-semibold">Accept invitation</h2>
               <p className="text-xs text-neutral-400">Choose an alias, then deliberately connect. Opening this link never sends a message or wakes an agent.</p>
@@ -220,7 +254,6 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
             {!threads.length && <p className="text-xs text-neutral-500">No conversations yet.</p>}
             {threads.map((t) => (
               <button key={t.id} type="button" onClick={() => {
-                agentController.current?.abort();
                 setActiveId(t.id); activeIdRef.current = t.id; setMessages([]);
               }} className={"mb-2 block w-full rounded-lg border px-3 py-3 text-left text-sm " +
                 (t.id === activeId ? "border-noema-lime text-white" : "border-noema-border text-neutral-400")}>
