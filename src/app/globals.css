@@ -4,44 +4,65 @@
 
 :root {
   color-scheme: dark;
+  --noema-bg: #070707;
+  --noema-surface: #111113;
+  --noema-text: #fafafa;
+  --noema-muted: #a3a3a3;
+  --noema-lime: #b9ff66;
+  --noema-violet: #a78bfa;
+  --noema-burgundy: #70243d;
+  --noema-gold: #d9b16b;
+}
+
+html {
+  background: var(--noema-bg);
 }
 
 body {
   min-height: 100vh;
   margin: 0;
-  background: linear-gradient(160deg, #090f25 0%, #1a1540 55%, #2e1657 100%);
-  color: #f5f8ff;
-  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background:
+    radial-gradient(ellipse 55% 34% at 100% 0%, rgba(112, 36, 61, 0.13), transparent 75%),
+    radial-gradient(ellipse 56% 30% at 0% 100%, rgba(100, 61, 168, 0.08), transparent 78%),
+    #070707;
+  color: var(--noema-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
   -webkit-tap-highlight-color: transparent;
 }
 
-.font-agent-inter {
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+::selection {
+  background: rgba(185, 255, 102, 0.26);
+  color: #fff;
 }
 
-.font-agent-manrope {
-  font-family: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+:focus-visible {
+  outline: 2px solid var(--noema-lime);
+  outline-offset: 3px;
 }
 
-.font-agent-ibm {
-  font-family: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+.font-agent-inter, .font-agent-manrope, .font-agent-ibm, .font-agent-space,
+.font-agent-merriweather, .font-agent-jetbrains-mono {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-.font-agent-space {
-  font-family: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+.hljs { background: transparent !important; }
+
+.noema-mesh {
+  background-image:
+    linear-gradient(to right, rgba(255,255,255,0.026) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.026) 1px, transparent 1px);
+  background-size: 42px 42px;
 }
 
-.font-agent-merriweather {
-  font-family: var(--font-merriweather), ui-serif, Georgia, serif;
-}
-
-.font-agent-jetbrains {
-  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-.hljs {
-  background: transparent !important;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

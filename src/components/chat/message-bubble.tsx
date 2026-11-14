@@ -93,23 +93,23 @@ export function MessageBubble({
   return (
     <article className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       {isAgent && !isUser && (
-        <div className={`mr-2 mt-1 shrink-0 overflow-hidden border border-noema-borderSoft bg-slate-800 ${avatarShape === "circle" ? "h-8 w-8 rounded-full" : avatarShape === "portrait" ? "h-10 w-8 rounded-lg" : "h-8 w-8 rounded-lg"}`}>
+        <div className={`mr-2 mt-1 shrink-0 overflow-hidden border border-noema-borderSoft bg-[#171719] ${avatarShape === "circle" ? "h-8 w-8 rounded-full" : avatarShape === "portrait" ? "h-10 w-8 rounded-lg" : "h-8 w-8 rounded-lg"}`}>
           {avatarImage ? (
             <Image src={avatarImage} alt="Agent avatar" width={80} height={80} className="h-full w-full object-cover" unoptimized />
           ) : (
-            <div className="flex h-full items-center justify-center text-[10px] text-slate-200">AI</div>
+            <div className="flex h-full items-center justify-center text-[10px] text-noema-violet">AI</div>
           )}
         </div>
       )}
       <div
         className={`relative max-w-[88%] rounded-2xl border px-3 py-2.5 text-sm transition ${
           isUser
-            ? "border-blue-300/20 bg-blue-500/18 text-slate-100"
+            ? "border-noema-lime/25 bg-[#1b2517] text-white"
             : isAgent
-              ? "border-violet-300/20 bg-violet-500/18 text-slate-100"
-              : "border-slate-400/20 bg-slate-800/75 text-slate-100"
-        } ${outputVisibility === "ghost" ? "border-dashed bg-slate-900/60" : ""} ${isContextActive ? "ring-2 ring-violet-300/70 ring-offset-2 ring-offset-slate-950" : ""} ${
-          selected ? "ring-2 ring-emerald-300/80 ring-offset-2 ring-offset-slate-950" : ""
+              ? "border-noema-violet/30 bg-[#211928] text-white"
+              : "border-noema-border bg-[#18181a] text-neutral-100"
+        } ${outputVisibility === "ghost" ? "border-dashed border-noema-gold/45 bg-[#241520]" : ""} ${isContextActive ? "ring-2 ring-noema-violet ring-offset-2 ring-offset-black" : ""} ${
+          selected ? "ring-2 ring-noema-lime ring-offset-2 ring-offset-black" : ""
         }`}
         style={accentColor ? { borderColor: accentColor } : undefined}
         onClick={() => {
@@ -156,7 +156,7 @@ export function MessageBubble({
           <button
             type="button"
             aria-label="Message actions"
-            className="absolute -right-2 -top-2 rounded-full border border-noema-borderSoft bg-slate-900/90 p-1 text-slate-300"
+            className="absolute -right-2 -top-2 rounded-full border border-noema-borderSoft bg-black p-1 text-neutral-300"
             onClick={(event) => {
               event.stopPropagation();
               onContextActionOpen(message, { kind: "message" });
@@ -170,8 +170,8 @@ export function MessageBubble({
           <div
             className={`absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full border text-[11px] ${
               selected
-                ? "border-emerald-200/80 bg-emerald-500 text-white"
-                : "border-slate-300/40 bg-slate-900/90 text-slate-300"
+                ? "border-noema-lime bg-noema-lime text-black"
+                : "border-noema-border bg-black text-neutral-300"
             }`}
           >
             {selected ? <Icon icon="solar:check-circle-bold" /> : ""}
@@ -179,7 +179,7 @@ export function MessageBubble({
         )}
 
         {outputVisibility === "ghost" && (
-          <p className="mb-1 text-[10px] uppercase tracking-wide text-amber-300">Private result</p>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-noema-gold">Private result</p>
         )}
         <MarkdownMessage content={message.content} className={fontClass} style={fontColor ? { color: fontColor } : undefined} />
         <p className="mt-1 text-right text-[10px] text-slate-400">
