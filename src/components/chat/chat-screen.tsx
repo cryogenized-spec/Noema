@@ -474,7 +474,7 @@ export function ChatScreen() {
   };
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-3">
+    <section className="flex h-full min-h-0 min-w-0 flex-col gap-3">
       {selectionMode && (
         <SelectionActionBar
           selectedCount={selectedCount}
@@ -487,7 +487,7 @@ export function ChatScreen() {
 
       <div
         ref={listRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-xl border border-noema-border bg-[#0b0b0d] p-3"
+        className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto rounded-xl border border-noema-border bg-[#0b0b0d] p-3"
       >
         {!hasMessages ? (
           <div className="rounded-xl border border-dashed border-noema-border bg-[#151517] p-5 text-sm text-neutral-300">
@@ -528,7 +528,7 @@ export function ChatScreen() {
         )}
       </div>
 
-      <div className="relative rounded-xl border border-noema-border bg-[#141416] p-3">
+      <div className="relative min-w-0 rounded-xl border border-noema-border bg-[#141416] p-2.5 sm:p-3">
         <div className="mb-2 flex items-center justify-between gap-2">
           <button
             type="button"
@@ -583,7 +583,7 @@ export function ChatScreen() {
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="flex min-w-0 items-end gap-1.5 sm:gap-2">
           <button
             type="button"
             aria-label="Markdown helpers"
@@ -599,7 +599,7 @@ export function ChatScreen() {
             onChange={(event) => setDraft(event.target.value)}
             rows={1}
             placeholder={activeAgent ? `Message ${activeAgent.name}` : "Message Noema"}
-            className="max-h-36 min-h-11 flex-1 resize-none rounded-md border border-noema-border bg-black px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-noema-lime focus:outline-none"
+            className="max-h-36 min-h-11 w-0 min-w-0 flex-1 resize-none rounded-md border border-noema-border bg-black px-3 py-2 text-sm text-white placeholder:text-neutral-500 focus:border-noema-lime focus:outline-none"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
@@ -620,7 +620,7 @@ export function ChatScreen() {
             type="button"
             onClick={() => void sendMessage()}
             disabled={!draft.trim() || agentPending}
-            className="shrink-0 rounded-md bg-noema-lime px-4 py-2.5 text-sm font-bold text-black disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-md bg-noema-lime px-2.5 py-2.5 text-xs font-bold text-black sm:px-4 sm:text-sm disabled:cursor-not-allowed disabled:opacity-50"
           >
             {editingMessageId !== null ? "Save" : "Send"}
           </button>
