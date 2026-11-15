@@ -158,3 +158,68 @@ test("allowed browser origins receive CORS headers even on malformed input", asy
   assert.equal(res.status,400);
   assert.equal(res.headers.get("Access-Control-Allow-Origin"),"https://noema.example");
 });
+
+test("reception claims include original question despite 60 newer messages", async () => {
+  const storage = memoryStore(), room = new NoemaRelayRoom({storage}, {});
+  const owner = await register(room), guest = await register(room);
+  const invite = await call(room,"/v1/invites",{},owner.token);
+  const joined = await call(room,"/v1/invites/redeem",{token:invite.json.token},guest.token);
+  const id = joined.json.thread.id;
+  await call(room,"/v1/threads/"+id+"/messages",
+    {clientMessageId:"original-question-id",content:"What are your business hours?"},guest.token);
+  await call(room,"/v1/threads/"+id+"/reception",{enabled:true},owner.token);
+  const claim = await call(room,"/v1/threads/"+id+"/agent-claim",{seq:1},owner.token);
+  assert.equal(claim.status,200);
+  for (let i=0;i<60;i++) {
+    const result = await call(room,"/v1/threads/"+id+"/messages",
+      {clientMessageId:"later-message-id-"+i,content:"Message "+i},guest.token);
+    assert.equal(result.status,201);
+  }
+  const oldFetch = globalThis.fetch;
+  let seen = null;
+  try {
+    globalThis.fetch = async (_url, init) => {
+      seen = JSON.parse(init.body);
+      return new Response("data: {\"type\":\"response.completed\"}\n\n",{
+        headers:{"Content-Type":"text/event-stream"}});
+    };
+    const result = await room.fetch(request("/v1/threads/"+id+"/agent-response",{
+      seq:1,claimToken:claim.json.claimToken,apiKey:"TEST_FAKE_KEY_DO_NOT_USE",
+    },owner.token));
+    assert.equal(result.status,200);
+    assert.equal(seen.input.at(-1).content,"What are your business hours?");
+    assert.equal(seen.input.some(x=>x.content.includes("Message 59")),false);
+    assert.equal(storage.data.get("claim:"+id+":1").state,"consumed");
+  } finally { globalThis.fetch = oldFetch; }
+});
+test("reception scan rotates past the first 20 enabled owner threads", async () => {
+  const storage=memoryStore(), room=new NoemaRelayRoom({storage},{});
+  const owner=await register(room);
+  for (let i=0;i<21;i++) {
+    const id="test-thread-"+String(i).padStart(10,"0");
+    storage.data.set("thread:"+id,{id,owner:owner.deviceId,guest:"unrelated-guest",
+      ownerAlias:"Host",guestAlias:"Visitor",receptionEnabled:true,
+      nextSeq:1,updatedAt:new Date().toISOString()});
+    if (i===20) storage.data.set("msg:"+id+":000000000001",{
+      id:id+":1",seq:1,sender:"guest",content:"The 21st guest's message",
+      clientMessageId:"test-21st-message-id",createdAt:new Date().toISOString(),status:"stored"});
+  }
+  const one=await call(room,"/v1/reception/pending",{},owner.token,"GET");
+  const two=await call(room,"/v1/reception/pending",{},owner.token,"GET");
+  assert.equal(one.status,200); assert.equal(two.status,200);
+  assert.equal(one.json.pending.length,0);
+  assert.equal(two.json.pending.length,1);
+  assert.equal(two.json.pending[0].message.content,"The 21st guest's message");
+});
+test("client replay ID cannot silently post different content or change sender", async () => {
+  const room=new NoemaRelayRoom({storage:memoryStore()}, {});
+  const owner=await register(room),guest=await register(room);
+  const invite=await call(room,"/v1/invites",{},owner.token);
+  const joined=await call(room,"/v1/invites/redeem",{token:invite.json.token},guest.token);
+  const url="/v1/threads/"+joined.json.thread.id+"/messages", cid="replay-message-identifier";
+  assert.equal((await call(room,url,{clientMessageId:cid,content:"first"},guest.token)).status,201);
+  assert.equal((await call(room,url,{clientMessageId:cid,content:"second"},guest.token)).status,409);
+  const got=await call(room,url+"?after=0",{},owner.token,"GET");
+  assert.equal(got.json.messages.length,1);
+  assert.equal(got.json.messages[0].content,"first");
+});

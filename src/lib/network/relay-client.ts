@@ -32,7 +32,7 @@ export const relayAvailable = /^https:\/\//.test(relayOrigin) ||
   /^http:\/\/localhost(?::\d+)?$/.test(relayOrigin);
 
 export class RelayError extends Error {
-  constructor(message: string, readonly status: number) { super(message); }
+  constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
 export async function relayFetch<T>(path: string, options: {
   session?: RelaySession; body?: unknown; method?: "GET" | "POST"; signal?: AbortSignal;
@@ -52,7 +52,8 @@ export async function relayFetch<T>(path: string, options: {
   try { result = await response.json(); } catch { throw new RelayError("Relay returned an invalid response.", response.status); }
   if (!response.ok) {
     const error = result && typeof result === "object" && "error" in result ? String(result.error) : "Relay request failed.";
-    throw new RelayError(error, response.status);
+    const code = result && typeof result === "object" && "code" in result ? String(result.code) : undefined;
+    throw new RelayError(error, response.status, code);
   }
   return result as T;
 }

@@ -44,10 +44,11 @@ export class NoemaRelayRoom {
     if (!thread || (thread.owner !== session.deviceId && thread.guest !== session.deviceId)) return null;
     return thread;
   }
-  async messages(id, after = 0) {
+  async messages(id, after = 0, through = Number.MAX_SAFE_INTEGER) {
     const all = await this.state.storage.list({ prefix: inboxPrefix(id) });
-    return Array.from(all.values()).filter((m) => m.seq > after).sort((a,b) => a.seq - b.seq)
-      .slice(-LIMITS.maxHistory);
+    // Apply the source-message upper bound BEFORE truncating the context.
+    return Array.from(all.values()).filter((m) => m.seq > after && m.seq <= through)
+      .sort((a,b) => a.seq - b.seq).slice(-LIMITS.maxHistory);
   }
   async fetch(req) {
     if (!(await this.limit(req))) return fail(429, "Rate limit reached.");
@@ -103,12 +104,19 @@ export class NoemaRelayRoom {
       return json({ threads });
     }
     if (req.method === "GET" && url.pathname === "/v1/reception/pending") {
-      // One bounded poll covers every enabled owner conversation, selected or not.
+      // Rotate a bounded scan so the 21st+ enabled conversation is not starved.
       const all = await this.state.storage.list({ prefix:"thread:" });
       const owned = Array.from(all.values()).filter((t) =>
-        t.owner === session.deviceId && t.receptionEnabled).slice(0, 20);
+        t.owner === session.deviceId && t.receptionEnabled)
+        .sort((a,b) => a.id.localeCompare(b.id));
+      const cursorKey = "reception-cursor:" + session.deviceId;
+      const last = Number(await this.state.storage.get(cursorKey) || 0);
+      const start = owned.length ? last % owned.length : 0;
+      const batchSize = Math.min(20, owned.length);
+      const batch = Array.from({length:batchSize}, (_,i) => owned[(start+i)%owned.length]);
+      if (owned.length) await this.state.storage.put(cursorKey, (start + batchSize)%owned.length);
       const pending = [];
-      for (const thread of owned) {
+      for (const thread of batch) {
         const messages = await this.messages(thread.id);
         for (const message of messages) {
           if (message.sender !== "guest") continue;
@@ -188,7 +196,12 @@ export class NoemaRelayRoom {
         if (asAgent && (!fresh.receptionEnabled || fresh.owner !== session.deviceId)) return null;
         const dedupe = dedupeKey(id, session.deviceId, input.clientMessageId);
         const previous = await txn.get(dedupe);
-        if (previous) return previous;
+        if (previous) {
+          // Client IDs may be retried after uncertain delivery, never reused for different text.
+          if (previous.content !== content || (previous.sender === "agent") !== asAgent)
+            return {conflict:true};
+          return previous;
+        }
         const seq = fresh.nextSeq + 1;
         const createdAt = new Date().toISOString();
         const item = { id:id + ":" + seq, seq, clientMessageId:input.clientMessageId,
@@ -199,7 +212,8 @@ export class NoemaRelayRoom {
         await txn.put(threadKey(id), { ...fresh, nextSeq:seq, updatedAt:createdAt });
         return item;
       });
-      return record ? json({ message:record }, 201) : fail(403, "Cannot deliver message.");
+      return record?.conflict ? fail(409, "Message ID cannot be reused with different content.")
+        : record ? json({ message:record }, 201) : fail(403, "Cannot deliver message.");
     }
     if (req.method === "POST" && action === "agent-claim") {
       if (session.deviceId !== thread.owner || !thread.receptionEnabled)
@@ -214,17 +228,20 @@ export class NoemaRelayRoom {
         const claimKey = "claim:" + id + ":" + seq;
         const prior = await txn.get(claimKey);
         if (prior?.state === "consumed" ||
-            (prior?.state === "leased" && prior.expiresAt > now())) return null;
+            (prior?.state === "leased" && prior.expiresAt > now())) return {code:"CLAIM_UNAVAILABLE"};
         const dayKey = "budget:" + fresh.owner + ":" + new Date().toISOString().slice(0,10);
-        if (Number(await txn.get(dayKey) || 0) >= LIMITS.agentCallsPerDay) return null;
+        if (Number(await txn.get(dayKey) || 0) >= LIMITS.agentCallsPerDay)
+          return {code:"AGENT_BUDGET_EXHAUSTED"};
         const token = randomToken();
         await txn.put(claimKey, { state:"leased", hash:await sha256(token),
           owner:fresh.owner, expiresAt:now() + 90000 });
         // A lease that expires before billing does not consume the daily budget.
-        return token;
+        return {token};
       });
-      return claim ? json({ claimToken:claim }) :
-        fail(429, "Already handled, actively leased, or agent budget exhausted.");
+      if (claim?.token) return json({claimToken:claim.token});
+      if (claim?.code === "AGENT_BUDGET_EXHAUSTED")
+        return json({error:"Agent daily budget exhausted.",code:claim.code},429);
+      return json({error:"Already handled or actively leased.",code:"CLAIM_UNAVAILABLE"},429);
     }
     if (req.method === "POST" && action === "agent-response") {
       if (session.deviceId !== thread.owner || !thread.receptionEnabled)
@@ -233,6 +250,15 @@ export class NoemaRelayRoom {
       if (!Number.isSafeInteger(seq) || !isId(input.claimToken) ||
           typeof input.apiKey !== "string" || input.apiKey.length < 12 || input.apiKey.length > 256)
         return fail(400, "Invalid claim or API key.");
+      // Missing source context must fail without consuming a paid-request claim.
+      const source = await this.state.storage.get(messageKey(id, seq));
+      if (!source || source.sender !== "guest") return fail(403, "Invalid source message.");
+      const messages = await this.messages(id, Math.max(0, seq - LIMITS.agentContextTurns), seq);
+      if (!messages.some((m) => m.seq === seq && m.sender === "guest"))
+        return fail(409, "Claimed message was missing from reception history.");
+      const context = contextHistory(messages);
+      if (!context.length || context.at(-1).content !== source.content.slice(0, LIMITS.agentTurnChars))
+        return fail(409, "The guest question was missing from AI context.");
       const claimKey = "claim:" + id + ":" + seq;
       const valid = await this.state.storage.transaction(async (txn) => {
         const live = await txn.get(claimKey);
@@ -249,9 +275,6 @@ export class NoemaRelayRoom {
         return true;
       });
       if (!valid) return fail(401, "Claim expired or already consumed.");
-      const source = await this.state.storage.get(messageKey(id, seq));
-      if (!source || source.sender !== "guest") return fail(403, "Invalid source message.");
-      const messages = await this.messages(id, Math.max(0, seq - LIMITS.agentContextTurns));
       const model = typeof input.model === "string" && /^gpt-[A-Za-z0-9.-]{1,60}$/.test(input.model)
         ? input.model : "gpt-4.1-mini";
       const upstream = await fetch("https://api.openai.com/v1/responses", {
@@ -260,7 +283,7 @@ export class NoemaRelayRoom {
         body:JSON.stringify({
           model, store:false, stream:true, tools:[], max_output_tokens:LIMITS.agentMaxOutputTokens,
           instructions:"You are NOEMA's disclosed AI receptionist. Briefly and politely answer the visitor. You have no access to private files or tools. Offer human handoff when necessary.",
-          input:contextHistory(messages.filter((m) => m.seq <= seq)),
+          input:context,
         }),
         signal:req.signal,
       });

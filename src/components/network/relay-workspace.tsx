@@ -20,7 +20,11 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const [activeId, setActiveId] = useState("");
   const [messages, setMessages] = useState<RelayMessage[]>([]);
   const [alias, setAlias] = useState("");
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<Record<string,string>>({});
+  const draft = drafts[activeId] ?? "";
+  // Retry uncertain network sends with the ORIGINAL ID, scoped to thread and text.
+  const uncertainSends = useRef(new Map<string,{content:string;messageId:string}>());
+  const [agentWarning, setAgentWarning] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -37,6 +41,11 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const agentController = useRef<AbortController | null>(null);
   const activeAgentThread = useRef<string | null>(null);
   const lastRenewAttempt = useRef(0);
+  const agentRetryAfter = useRef(0);
+  useEffect(() => {
+    agentRetryAfter.current = 0;
+    setAgentWarning("");
+  }, [unlocked, records]);
 
   useEffect(() => { hydrate(); }, [hydrate]);
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -50,7 +59,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!session || runningRef.current) return;
+    if (!session || runningRef.current || (inviteToken && !inviteConsumed)) return;
     runningRef.current = true;
     const renew = async () => {
       if (Date.now() - lastRenewAttempt.current < 30000) {
@@ -79,7 +88,9 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
 
       // One global authenticated query covers every ON owner thread.
       // The active conversation is a display choice, not a reception filter.
-      if (!agentRunning.current && unlocked) {
+      if (!agentRunning.current && unlocked &&
+          records.some((record) => record.providerId === "openai") &&
+          Date.now() >= agentRetryAfter.current) {
         const pending = await relayFetch<{pending:Array<{threadId:string; message:RelayMessage}>}>(
           "/v1/reception/pending", {session},
         );
@@ -119,8 +130,20 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
             }
           } catch (error:unknown) {
             if (!controller.signal.aborted && !stopped.current) {
-              setNotice("The agent could not answer this message. You can reply manually.");
-              setError(prettyError(error));
+              if (error instanceof RelayError && error.code === "AGENT_BUDGET_EXHAUSTED") {
+                // Server budgets use UTC calendar days.
+                const midnight = new Date();
+                midnight.setUTCHours(24,0,0,0);
+                agentRetryAfter.current = midnight.getTime();
+                setAgentWarning("AI reception paused until the daily usage budget resets.");
+              } else if (error instanceof RelayError && error.code === "CLAIM_UNAVAILABLE") {
+                agentRetryAfter.current = Date.now() + 30000;
+              } else {
+                // Do not repeatedly hammer the provider or vault at 4-second intervals.
+                agentRetryAfter.current = Date.now() + 60000;
+                setAgentWarning("AI reception encountered an error and is pausing retries. You can reply manually.");
+                setError(prettyError(error));
+              }
             }
           } finally {
             agentRunning.current = false;
@@ -139,14 +162,14 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
         }
       }
     } finally { runningRef.current = false; }
-  }, [session, unlocked, revealKey, records]);
+  }, [session, unlocked, revealKey, records, inviteToken, inviteConsumed]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || (inviteToken && !inviteConsumed)) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
     return () => window.clearInterval(timer);
-  }, [session, refresh]);
+  }, [session, refresh, inviteToken, inviteConsumed]);
 
   const activeThread = threads.find((t) => t.id === activeId);
   const isOwner = !!session && activeThread?.owner === session.deviceId;
@@ -178,14 +201,18 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
     setInviteConsumed(true);
     // Immediately scrub the one-use secret from the address bar.
     window.history.replaceState(null, "", "/connect");
-    await refresh();
+    // The normal polling effect begins after inviteConsumed has been set.
   });
   const send = () => run(async () => {
     if (!session || !activeId || !draft.trim()) return;
-    const text = draft.trim();
-    await relayPostMessage(session,activeId,text,newClientId());
-    setDraft("");
     const id = activeId;
+    const text = draft.trim();
+    const last = uncertainSends.current.get(id);
+    const messageId = last?.content === text ? last.messageId : newClientId();
+    uncertainSends.current.set(id,{content:text,messageId});
+    await relayPostMessage(session,id,text,messageId);
+    uncertainSends.current.delete(id);
+    setDrafts((current) => current[id]?.trim() === text ? {...current,[id]:""} : current);
     const reply = await relayGetMessages(session,id);
     if (activeIdRef.current === id) setMessages(reply.messages);
   });
@@ -198,6 +225,8 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
       session, method:"POST", body:{enabled},
     });
     setThreads((current) => current.map((t) => t.id === activeId ? {...t,receptionEnabled:enabled}:t));
+    agentRetryAfter.current = 0;
+    setAgentWarning("");
     setNotice(enabled ? "AI reception ON while this unlocked browser tab is open." : "AI reception OFF.");
   });
 
@@ -218,6 +247,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
         {connected ? "Device authenticated · " + session?.deviceId.slice(0, 14) + "…" : "Signing in with your device key…"}
       </div>}
       {error && <p role="alert" className="rounded-md border border-rose-700/60 bg-rose-950/40 p-3 text-sm text-rose-200">{error}</p>}
+      {agentWarning && <p role="status" className="rounded-md border border-amber-700/60 bg-amber-950/25 p-3 text-xs text-amber-200">{agentWarning}</p>}
       {notice && <p role="status" className="rounded-md border border-noema-lime/30 p-3 text-sm text-noema-lime">{notice}</p>}
       <section className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="flex flex-col gap-4 rounded-xl border border-noema-border bg-[#111113] p-4">
@@ -249,7 +279,7 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
               </div>}
             </div>
           )}
-          <div className="border-t border-noema-border pt-4">
+          {(!inviteToken || inviteConsumed) && <div className="border-t border-noema-border pt-4">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-neutral-400">Conversations</p>
             {!threads.length && <p className="text-xs text-neutral-500">No conversations yet.</p>}
             {threads.map((t) => (
@@ -261,9 +291,9 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
                 <span className="mt-1 block text-[11px] text-neutral-500">#{t.id.slice(0, 8)}</span>
               </button>
             ))}
-          </div>
+          </div>}
         </aside>
-        <section className="flex min-h-[500px] flex-col overflow-hidden rounded-xl border border-noema-border bg-[#0d0d0f]">
+        {(!inviteToken || inviteConsumed) && <section className="flex min-h-[500px] flex-col overflow-hidden rounded-xl border border-noema-border bg-[#0d0d0f]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-noema-border bg-[#151517] px-4 py-3">
             <div>
               <p className="text-sm font-semibold">{activeThread ? (isOwner ? activeThread.guestAlias : activeThread.ownerAlias) : "Select a conversation"}</p>
@@ -291,12 +321,12 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
             {workingAgent && <p className="text-xs text-noema-violet">AI receptionist responding…</p>}
           </div>
           {activeThread && <div className="flex items-end gap-2 border-t border-noema-border bg-[#151517] p-4">
-            <textarea value={draft} maxLength={4000} rows={2} onChange={(e) => setDraft(e.target.value)}
+            <textarea value={draft} maxLength={4000} rows={2} onChange={(e) => setDrafts((current) => ({...current,[activeId]:e.target.value}))}
               aria-label="Message to contact" placeholder="Write a message…" className={field} />
             <button type="button" disabled={!draft.trim() || pending} onClick={() => void send()}
               className="rounded-lg bg-noema-lime px-4 py-3 text-xs font-semibold text-black disabled:opacity-40">Send</button>
           </div>}
-        </section>
+        </section>}
       </section>
       <p className="text-xs leading-5 text-neutral-500">
         Test service: use private trusted contacts only. Messages are held in the deployer’s Cloudflare account and are not end-to-end encrypted. The auto-reception agent runs only while the owner’s browser is open, their local API vault is unlocked, and reception is enabled. It cannot access MCP tools in this pilot.
