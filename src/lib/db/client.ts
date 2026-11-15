@@ -6,6 +6,7 @@ import type { DocumentRecord } from "@/types/documents";
 import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { TaskRecord } from "@/types/tasks";
 import type { CalendarEventRecord } from "@/types/calendar";
+import type { WorkshopProfile } from "@/types/profile";
 
 class NoemaDatabase extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
@@ -15,6 +16,7 @@ class NoemaDatabase extends Dexie {
   attachments!: EntityTable<DocumentAttachmentRecord, "id">;
   tasks!: EntityTable<TaskRecord, "id">;
   calendarEvents!: EntityTable<CalendarEventRecord, "id">;
+  profiles!: EntityTable<WorkshopProfile, "id">;
 
   constructor() {
     super("noema-db");
@@ -123,6 +125,9 @@ class NoemaDatabase extends Dexie {
       calendarEvents:
         "++id, title, startAt, endAt, status, allDay, timezone, linkedTaskId, linkedDocumentId, sourceType, reminderEnabled, reminderAt, reminderState, recurrencePreset, updatedAt, isPinned",
     });
+
+    // Preserves existing tables while introducing the singleton local workshop profile.
+    this.version(10).stores({ profiles: "id, updatedAt" });
   }
 }
 
