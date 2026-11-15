@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-namespace, prefer-const, @typescript-eslint/no-unused-vars */
+// Licensed vendor code. Keep Nayuki's original algorithm and MIT notice intact.
 /* 
  * QR Code generator library (TypeScript)
  * 
