@@ -1,6 +1,8 @@
 "use client";
 
 import { Icon } from "@iconify/react";
+import Link from "next/link";
+import { useEffect } from "react";
 import type { TabKey } from "@/components/layout/bottom-tabs";
 
 const destinations: Array<{ key: TabKey; label: string; icon: string }> = [
@@ -20,6 +22,21 @@ interface WorkspaceNavigationProps {
 }
 
 export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, desktopOpen, onClose }: WorkspaceNavigationProps) {
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen, onClose]);
+
+  const invitationEntry = (compact: boolean) => (
+    <Link href="/invite/demo" title="Invitation preview" aria-label={compact ? "Invitation preview" : undefined}
+      onClick={onClose}
+      className={`flex min-h-11 items-center rounded-xl text-noema-gold transition hover:bg-white/[0.04] ${compact ? "w-12 justify-center" : "w-full gap-3 px-3"}`}>
+      <Icon icon="solar:link-round-linear" className="text-xl" aria-hidden="true" />
+      {!compact && <span className="text-sm">Invitation preview</span>}
+    </Link>
+  );
   const renderDestinations = (compact: boolean) => destinations.map((destination) => {
     const active = activeTab === destination.key;
     return (
@@ -44,11 +61,13 @@ export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, deskto
           aria-label="Workspace navigation">
           <nav className="flex w-full flex-col items-center gap-2" aria-label="Workspace sections">
             {renderDestinations(true)}
+            <div className="my-2 h-px w-9 bg-noema-border" aria-hidden="true" />
+            {invitationEntry(true)}
           </nav>
         </aside>
       )}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Workspace navigation">
           <button type="button" className="absolute inset-0 bg-black/75" onClick={onClose} aria-label="Close navigation overlay" />
           <aside className="absolute inset-y-0 left-0 flex w-[min(86vw,278px)] flex-col border-r border-noema-border bg-[#101011] p-4 shadow-2xl"
             aria-label="Mobile workspace navigation">
@@ -61,6 +80,8 @@ export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, deskto
             </div>
             <nav className="flex flex-col gap-2" aria-label="Workspace sections">
               {renderDestinations(false)}
+              <div className="my-2 h-px w-full bg-noema-border" aria-hidden="true" />
+              {invitationEntry(false)}
             </nav>
           </aside>
         </div>
