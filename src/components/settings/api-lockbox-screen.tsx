@@ -62,6 +62,7 @@ export function ApiLockboxScreen() {
     updateRememberLastProvider,
   } = useSttStore();
   const [openProviderId, setOpenProviderId] = useState<string | null>(PROVIDER_CATALOG[0]?.id ?? null);
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"vault" | "models" | "voice" | "integrations">("vault");
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   const [password, setPassword] = useState("");
   const [vaultMessage, setVaultMessage] = useState("");
@@ -112,14 +113,26 @@ export function ApiLockboxScreen() {
   const configuredIds = useMemo(() => new Set(records.map((record) => record.providerId)), [records]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-noema-border bg-noema-glassStrong p-3">
-      <header className="rounded-xl border border-noema-borderSoft bg-slate-950/55 p-3">
-        <h2 className="text-base font-semibold text-slate-100">API Lockbox</h2>
-        <p className="mt-1 text-xs text-slate-400">
-          BYOK credentials are stored locally on this device for this phase. Connector integrations are deferred.
-        </p>
-      </header>
-
+    <section className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-noema-border bg-[#0b0b0d] p-2">
+      <nav className="grid shrink-0 grid-cols-4 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1" aria-label="Settings sections">
+        {([
+          ["vault", "Vault"],
+          ["models", "Models"],
+          ["voice", "Voice"],
+          ["integrations", "Links"],
+        ] as const).map(([id, title]) => (
+          <button key={id} type="button" aria-current={activeSettingsTab === id ? "page" : undefined}
+            onClick={() => setActiveSettingsTab(id)}
+            className={`min-h-10 min-w-0 rounded-md px-1.5 text-[11px] font-medium transition sm:text-xs
+              ${activeSettingsTab === id ? "bg-noema-lime text-black" : "text-neutral-400 hover:bg-white/5 hover:text-white"}`}>
+            {title}
+          </button>
+        ))}
+      </nav>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-1">
+        {activeSettingsTab === "vault" && (
+          <div className="space-y-3">
+            <p className="px-1 text-xs text-neutral-400">Encrypted credentials stay on this device. Unlock here before configuring a provider.</p>
       <div className="rounded-xl border border-noema-border bg-noema-panel p-3">
         <h3 className="text-sm font-medium text-white">Encrypted API Vault · {unlocked ? "Unlocked" : "Locked"}</h3>
         <p className="mt-1 text-xs text-slate-400">AES-256-GCM encryption. Your passphrase is not saved. A lost passphrase cannot be recovered. Browser extensions and malicious same-origin scripts remain a threat.</p>
@@ -137,7 +150,14 @@ export function ApiLockboxScreen() {
         {vaultMessage && <p role="status" className="mt-2 text-xs text-noema-lime">{vaultMessage}</p>}
         {vaultError && <p role="alert" className="mt-2 text-xs text-rose-300">{vaultError}</p>}
       </div>
-
+          </div>
+        )}
+        {activeSettingsTab === "models" && (
+          <div className="space-y-3">
+            {!unlocked && <p className="rounded-lg border border-noema-gold/30 bg-[#1e1610] p-3 text-xs text-neutral-300">
+              Vault is locked. Open the Vault tab to unlock it before saving provider keys.
+            </p>}
+            <h2 className="px-1 text-sm font-semibold text-white">AI providers & models</h2>
       <div className="space-y-2">
         {PROVIDER_CATALOG.map((provider) => {
           const open = openProviderId === provider.id;
@@ -371,11 +391,9 @@ export function ApiLockboxScreen() {
           );
         })}
       </div>
-
-      <section className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/35 p-3 text-xs text-slate-400">
-        Connectors (future): GitHub, Notion, Drive, and storage integrations will appear here.
-      </section>
-
+          </div>
+        )}
+        {activeSettingsTab === "voice" && (
       <section className="rounded-xl border border-noema-border bg-noema-panel p-3">
         <h3 className="text-sm font-semibold text-slate-100">Voice / Speech-to-Text</h3>
         <p className="mt-1 text-xs text-slate-400">
@@ -427,6 +445,13 @@ export function ApiLockboxScreen() {
           </label>
         </div>
       </section>
+        )}
+        {activeSettingsTab === "integrations" && (
+      <section className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/35 p-3 text-xs text-slate-400">
+        Connectors (future): GitHub, Notion, Drive, and storage integrations will appear here.
+      </section>
+        )}
+      </div>
     </section>
   );
 }
