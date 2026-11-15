@@ -59,6 +59,13 @@ export interface ProviderModel {
   supportsReasoningEffort: boolean;
   defaultTemperature: number | null;
   notes: string;
+  /** Documentation status, not a check of this user's API entitlements. */
+  lifecycle?: "current" | "previous" | "restricted";
+  /** Reference to the official model card. */
+  modelDocsUrl?: string;
+  /** Standard cached-input price, when officially published. */
+  cachedInputPricePer1M?: number | null;
+  maxOutputTokens?: number | null;
 }
 
 export interface ProviderCatalogEntry {
