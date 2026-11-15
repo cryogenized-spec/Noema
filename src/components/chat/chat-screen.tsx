@@ -21,6 +21,7 @@ import { hasProviderAdapter } from "@/lib/ai/provider-registry";
 import { readOpenAIStream } from "@/lib/ai/openai-sse";
 import type { AgentProfile } from "@/types/agents";
 import type { ChatMessage } from "@/types/chat";
+import { db } from "@/lib/db/client";
 import type { AgentInvocationMode } from "@/lib/runtime/types";
 
 
@@ -66,6 +67,7 @@ export function ChatScreen() {
   const { records, hydrate: hydrateLockbox, revealKey } = useLockboxStore();
 
   const [draft, setDraft] = useState("");
+  const [ownProfile, setOwnProfile] = useState<{ avatar: string; alias: string }>({ avatar: "", alias: "You" });
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [agentPending, setAgentPending] = useState(false);
   const [showMarkdownMenu, setShowMarkdownMenu] = useState(false);
@@ -82,6 +84,14 @@ export function ChatScreen() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const sendInFlight = useRef(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void db.profiles.get("self").then((profile) => {
+      if (mounted && profile) setOwnProfile({ avatar: profile.avatarImage, alias: profile.alias || "You" });
+    }).catch(() => { /* Profile storage is optional for local chat. */ });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -488,6 +498,8 @@ export function ChatScreen() {
             <MessageBubble
               key={message.id ?? `${message.role}-${message.createdAt}`}
               message={message}
+              selfAvatar={ownProfile.avatar}
+              selfAlias={ownProfile.alias}
               selectionMode={selectionMode}
               selected={message.id !== undefined ? selectedIds.includes(message.id) : false}
               isContextActive={menuState.visible && menuState.message?.id === message.id}
