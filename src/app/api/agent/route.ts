@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { executeAgentPayload } from "@/lib/runtime/execute-agent";
 import { openAIStreamResponse } from "@/lib/ai/providers/openai-provider";
+import { openGeminiStreamResponse } from "@/lib/ai/providers/gemini-interactions";
 import { CONTEXT_LIMITS, boundConversation } from "@/lib/ai/context-budget";
 import type { ProviderExecutionPayload } from "@/lib/runtime/types";
 import { isLocalDevelopmentGatewayRequest } from "@/lib/security/development-gateway";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     if (!parsed.executionPayload || typeof parsed.executionPayload !== "object") return reject(400, "Execution payload required.");
     payload = parsed.executionPayload;
   } catch { return reject(400, "Invalid JSON."); }
-  if (payload.providerId !== "openai") return reject(400, "Only OpenAI BYOK is available in this development gateway.");
+  if (payload.providerId !== "openai" && payload.providerId !== "gemini") return reject(400, "Provider is not supported by this development gateway.");
   if (typeof payload.apiKey !== "string" || payload.apiKey.length < 5 || payload.apiKey.length > 256)
     return reject(401, "An explicitly supplied BYOK key is required.");
   if (typeof payload.modelId !== "string" || typeof payload.prompt !== "string" || typeof payload.systemPrompt !== "string")
@@ -42,7 +43,9 @@ export async function POST(request: Request) {
   };
   try {
     if (payload.streamingMode !== "oneshot") {
-      const upstream = await openAIStreamResponse(payload, request.signal);
+      const upstream = payload.providerId === "gemini"
+        ? await openGeminiStreamResponse(payload, request.signal)
+        : await openAIStreamResponse(payload, request.signal);
       return new Response(upstream.body, {
         headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Content-Type-Options": "nosniff" },
       });
