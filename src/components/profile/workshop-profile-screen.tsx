@@ -8,7 +8,6 @@ import { db } from "@/lib/db/client";
 import { optimiseWorkshopImage, type WorkshopImageKind } from "@/lib/profile/image";
 import { normalizeWorkshopProfile, splitWorkshopTags, verifiedHttpsUrl, activeBuildCount } from "@/lib/profile/workshop";
 import {
-  NEW_WORKSHOP_PROFILE,
   type BuildStatus,
   type ProficiencyLevel,
   type WorkshopBuild,
@@ -376,7 +375,7 @@ export function WorkshopProfileScreen() {
                           onChange={(e) => patch({ about: e.target.value })} /></label>
                     </> : profile.about
                       ? <p className="whitespace-pre-wrap break-words text-sm leading-6 text-neutral-300">{profile.about}</p>
-                      : <EmptySection>Tell collaborators what you build, how you work, and what you'd like to make next.</EmptySection>}
+                      : <EmptySection>Tell collaborators what you build, how you work, and what you would like to make next.</EmptySection>}
                   </section>
                   <section className={panelClass + " space-y-3"}>
                     <div className="flex items-center justify-between gap-2">
@@ -410,7 +409,7 @@ export function WorkshopProfileScreen() {
                   <section className={panelClass + " space-y-2"}>
                     <h2 className="text-sm font-semibold text-noema-lime">Data ownership</h2>
                     <p className="text-xs leading-5 text-neutral-400">
-                      RADIX's local-first approach is preserved. Your profile is not public or encrypted by the API Lockbox.
+                      The local-first approach from RADIX is preserved. Your profile is not public or encrypted by the API Lockbox.
                       It can be lost when browser data is cleared. Export a JSON backup to retain a private copy.
                     </p>
                     <button type="button" className={outlineButton} onClick={exportSaved}>
