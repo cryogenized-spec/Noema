@@ -61,7 +61,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     let id = -1;
     await db.transaction("rw", db.agents, async () => {
       await transferAssignments(-1, next.roleAssignments ?? [], now);
-      id = await db.agents.add(next);
+      const addedId = await db.agents.add(next);
+      if (addedId === undefined) throw new Error("Could not allocate agent ID.");
+      id = addedId;
     });
     const persisted = { ...next, id };
     set({ agents: await refresh() });
@@ -100,6 +102,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       updatedAt: now,
     };
     const nextId = await db.agents.add(duplicate);
+    if (nextId === undefined) throw new Error("Could not duplicate agent.");
     set({ agents: await refresh() });
     return { ...duplicate, id: nextId };
   },
