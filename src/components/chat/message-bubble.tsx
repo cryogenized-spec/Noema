@@ -106,7 +106,7 @@ export function MessageBubble({
         </div>
       )}
       <div
-        className={`relative max-w-[88%] rounded-2xl border px-3 py-2.5 text-sm transition ${
+        className={`relative min-w-0 max-w-[88%] break-words rounded-2xl border px-3 py-2.5 text-sm transition ${
           isUser
             ? "border-noema-lime/25 bg-[#1b2517] text-white"
             : isAgent
