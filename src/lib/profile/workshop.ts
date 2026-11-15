@@ -19,20 +19,7 @@ export function normalizeWorkshopProfile(stored: Partial<WorkshopProfile> | unde
   };
 }
 
-/** Never turn user-provided proof links into javascript:, data: or HTTP navigation. */
-export function verifiedHttpsUrl(raw: string): string {
-  try {
-    const parsed = new URL(raw.trim());
-    if (parsed.protocol !== "https:" || !parsed.hostname) return "";
-    return parsed.toString();
-  } catch { return ""; }
-}
-
-/** Retains usable tags, bounded for lightweight local indexing and display. */
-export function splitWorkshopTags(raw: string): string[] {
-  return [...new Set(raw.split(",").map((tag) => tag.trim()).filter(Boolean))]
-    .slice(0, 24).map((tag) => tag.slice(0, 48));
-}
+export { verifiedHttpsUrl, splitWorkshopTags } from "./validators";
 
 export function activeBuildCount(profile: WorkshopProfile): number {
   return profile.builds.filter((build) => !build.archived).length;
