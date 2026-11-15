@@ -10,7 +10,7 @@ export const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     baseUrl: "https://api.openai.com/v1",
     logoPath: "/providers/openai.svg",
     keyPlaceholder: "sk-...",
-    supportedSettings: ["maxOutputTokens", "reasoningEffort"],
+    supportedSettings: ["temperature", "maxOutputTokens", "reasoningEffort"],
     lastVerified: "2026-11-15",
     notes: "Curated text/vision-input models for the NOEMA agent editor. Official documentation is not a per-key access check. Standard text-token prices only; high-context, service tier, tools and regional processing may cost more. Image generation, embeddings and realtime/audio models require separate runtimes and are intentionally not listed as chat agents.",
     models: [
