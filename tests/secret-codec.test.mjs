@@ -18,3 +18,24 @@ test("lockbox stores randomized AES-GCM ciphertext and fails closed", async () =
   delete globalThis.window;
   lockVault();
 });
+
+test("explicit Lock invalidates an already queued unlock", async () => {
+  const cache = new Map();
+  let release;
+  const blocked = new Promise((resolve) => {release = resolve;});
+  globalThis.window = {
+    localStorage: {getItem:(k)=>cache.get(k)??null,setItem:(k,v)=>cache.set(k,v)},
+    navigator: {locks: {request:async (_name,_opts,callback)=>{
+      await blocked;
+      return callback();
+    }}},
+  };
+  try {
+    const stale = unlockVault("a long unique test passphrase");
+    lockVault();
+    release();
+    await assert.rejects(stale,/cancelled/);
+    assert.throws(()=>secretCodec.encode("secret"));
+    assert.equal(cache.size,0);
+  } finally { delete globalThis.window; lockVault(); }
+});

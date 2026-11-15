@@ -47,8 +47,8 @@ export async function openAIStreamResponse(payload: ProviderExecutionPayload, si
 }
 export const openAIProvider: AgentProvider = {
   name: "openai",
-  async generateResponse(payload: ProviderExecutionPayload): Promise<string> {
-    const response = await callOpenAI(payload, false);
+  async generateResponse(payload: ProviderExecutionPayload, signal?: AbortSignal): Promise<string> {
+    const response = await callOpenAI(payload, false, signal);
     return extractOpenAIText(await response.json() as unknown);
   },
 };

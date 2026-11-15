@@ -39,7 +39,7 @@ export const openAiSttProvider: SttProviderAdapter = {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}` },
         body: formData,
-        signal: controller.signal,
+        signal: request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal,
       });
 
       if (!response.ok) {

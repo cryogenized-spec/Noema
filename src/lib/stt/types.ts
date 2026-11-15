@@ -6,6 +6,7 @@ export interface SttTranscriptionRequest {
   apiKey?: string;
   openaiModel?: OpenAiTranscriptionModel;
   language?: string;
+  signal?: AbortSignal;
 }
 
 export interface SttTranscriptionSuccess {

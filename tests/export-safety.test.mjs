@@ -4,6 +4,7 @@ import {
   safeExportPath, safeExportFilename, safeExportDirectory,
   safeYamlValue, safeYamlKey, safeDatePrefix,
 } from "../src/lib/security/export-safety.ts";
+import { parseImportedMarkdownDocument, serializeDocumentFrontmatter } from "../src/lib/documents/obsidian-interoperability.ts";
 import { safeExternalImageLink } from "../src/lib/security/markdown-url.ts";
 test("safe export paths allow ordinary names and nested directories", () => {
   assert.equal(safeExportPath("Notes/2026","draft 1.md"), "Notes/2026/draft 1.md");
@@ -37,4 +38,17 @@ test("markdown cannot auto-load remote image resources; clickable link is HTTPS 
     "data:image/svg+xml;base64,AAAA","https://user:pass@cdn.example/x","/internal.png"]) {
     assert.equal(safeExternalImageLink(unsafe),null);
   }
+});
+
+test("safe metadata export/import preserves quotes, newlines, commas and backslashes", () => {
+  const fields = {
+    title: 'Example "quoted" \\ path\nnew line',
+    tags: ["alpha, beta", "quote \" and slash \\", "multiline\nvalue"],
+    updated: "2026-11-15T04:00:00.000Z",
+  };
+  const markdown = serializeDocumentFrontmatter(fields)+"\nThe body\n";
+  const parsed = parseImportedMarkdownDocument(markdown);
+  assert.deepEqual(parsed.frontmatter, fields);
+  assert.equal(parsed.bodyMarkdown,"The body");
+  assert.deepEqual(parseImportedMarkdownDocument(serializeDocumentFrontmatter(parsed.frontmatter)+"\nThe body\n").frontmatter, fields);
 });

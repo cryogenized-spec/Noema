@@ -25,18 +25,27 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<number | null>(null);
+  const mounted = useRef(false);
+  const captureGeneration = useRef(0);
 
   useEffect(() => {
     if (!hydrated) hydrate();
   }, [hydrate, hydrated]);
 
-  useEffect(
-    () => () => {
-      if (timerRef.current) window.clearInterval(timerRef.current);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      ++captureGeneration.current;
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      try {
+        if (mediaRecorderRef.current?.state === "recording")
+          mediaRecorderRef.current.stop();
+      } catch { /* Track cleanup must still run. */ }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-    },
-    [],
-  );
+      streamRef.current = null;
+    };
+  }, []);
 
   const preferredMimeType = useMemo(() => {
     if (typeof window === "undefined" || typeof MediaRecorder === "undefined") return undefined;
@@ -53,8 +62,13 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
       return;
     }
 
+    const attempt = ++captureGeneration.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mounted.current || captureGeneration.current !== attempt) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const recorder = preferredMimeType ? new MediaRecorder(stream, { mimeType: preferredMimeType }) : new MediaRecorder(stream);
       streamRef.current = stream;
       mediaRecorderRef.current = recorder;
@@ -71,7 +85,8 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
         setElapsedSeconds((current) => current + 1);
       }, 1000);
     } catch {
-      emitError({ code: "MIC_PERMISSION_DENIED", message: "Microphone permission was denied." });
+      if (mounted.current && captureGeneration.current === attempt)
+        emitError({ code: "MIC_PERMISSION_DENIED", message: "Microphone permission was denied." });
     }
   };
 
@@ -79,7 +94,7 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     const recorder = mediaRecorderRef.current;
     if (!recorder) return;
 
-    if (timerRef.current) window.clearInterval(timerRef.current);
+    if (timerRef.current !== null) window.clearInterval(timerRef.current);
     setRecording(false);
 
     const blob = await new Promise<Blob>((resolve) => {

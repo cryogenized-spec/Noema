@@ -1,10 +1,10 @@
 import { resolveProvider } from "@/lib/ai/provider-registry";
 import type { AgentExecutionResult, ProviderExecutionPayload } from "@/lib/runtime/types";
 
-export async function executeAgentPayload(payload: ProviderExecutionPayload): Promise<AgentExecutionResult> {
+export async function executeAgentPayload(payload: ProviderExecutionPayload, signal?: AbortSignal): Promise<AgentExecutionResult> {
   try {
     const provider = resolveProvider(payload.providerId);
-    const content = await provider.generateResponse(payload);
+    const content = await provider.generateResponse(payload, signal);
     return {
       ok: true,
       provider: provider.name,

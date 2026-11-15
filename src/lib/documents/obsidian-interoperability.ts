@@ -84,14 +84,24 @@ export const planDocumentsVaultExport = (
   };
 };
 
-const parseYamlArray = (value: string): string[] => {
+/** Parse our JSON-compatible safe YAML scalars; keep a narrow fallback for old exports. */
+const parseYamlValue = (value: string): string | string[] | null => {
   const trimmed = value.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
-  return trimmed
-    .slice(1, -1)
-    .split(",")
-    .map((item) => item.trim().replace(/^"|"$/g, ""))
-    .filter(Boolean);
+  if (!trimmed) return null;
+  if (trimmed.startsWith('"') || trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (typeof parsed === "string") return parsed;
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string"))
+        return parsed;
+    } catch { /* Legacy YAML quoting: handle below without executing YAML tags. */ }
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    return trimmed.slice(1,-1).split(",")
+      .map((item) => item.trim().replace(/^"|"$/g, "")).filter(Boolean);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    return trimmed.slice(1,-1).replace(/\\"/g,'"');
+  return trimmed;
 };
 
 export const parseImportedMarkdownDocument = (content: string): { frontmatter?: DocumentFrontmatter; bodyMarkdown: string } => {
@@ -117,11 +127,8 @@ export const parseImportedMarkdownDocument = (content: string): { frontmatter?: 
     const rawValue = rawValueParts.join(":").trim();
     if (!rawValue) continue;
 
-    if (rawValue.startsWith("[")) {
-      frontmatter[key] = parseYamlArray(rawValue);
-    } else {
-      frontmatter[key] = rawValue.replace(/^"|"$/g, "");
-    }
+    const decoded = parseYamlValue(rawValue);
+    if (decoded !== null) frontmatter[key] = decoded;
   }
 
   return { frontmatter, bodyMarkdown };
