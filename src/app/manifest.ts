@@ -1,5 +1,8 @@
 import type { MetadataRoute } from "next";
 
+// A deterministic web manifest is compatible with the bundled Android static export.
+export const dynamic = "force-static";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",

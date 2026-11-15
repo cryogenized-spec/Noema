@@ -1,0 +1,16 @@
+{
+  "name": "noema-android-wrapper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NOEMA bundled Android debug shell (not the production messaging backend)",
+  "scripts": {
+    "cap:android": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/core": "7.6.10",
+    "@capacitor/android": "7.6.10"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.6.10"
+  }
+}

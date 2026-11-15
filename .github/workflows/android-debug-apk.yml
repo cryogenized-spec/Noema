@@ -1,0 +1,88 @@
+name: NOEMA Android Debug APK
+
+on:
+  push:
+    branches:
+      - build/android-debug-apk
+  pull_request:
+    paths:
+      - ".github/workflows/android-debug-apk.yml"
+      - "mobile/**"
+      - "next.config.ts"
+      - "src/**"
+      - "package*.json"
+      - "docs/android-debug-build.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build test APK (no release signing)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CI: "true"
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+        with:
+          # The old SDK 'tools' package is no longer available; do not use action defaults.
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Install web dependencies from committed lockfile
+        run: npm ci --no-audit --no-fund
+      - name: Web security gates, tests, and types
+        run: |
+          npm run security:gates
+          npm run typecheck
+          npm run test:unit
+
+      - name: Build standalone NOEMA UI for Android
+        run: |
+          # Server-only routes cannot execute in a bundled offline WebView.
+          # Exclude them from this temporary Actions workspace only, not the repository.
+          if [ -d src/app/api ]; then
+            mv src/app/api "$RUNNER_TEMP/noema-server-only-api"
+          fi
+          NOEMA_ANDROID_EXPORT=1 npm run build
+          test -s out/index.html
+          test -s out/invite/demo/index.html
+          if find out -path '*/api/*' -type f | grep -q .; then
+            echo "::error::Unexpected API routes in Android assets"
+            exit 1
+          fi
+
+      - name: Install Capacitor and generate Android project
+        run: |
+          mkdir -p mobile/www
+          cp -a out/. mobile/www/
+          cd mobile
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx cap sync android
+
+      - name: Compile Android debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish downloadable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: noema-android-debug-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
