@@ -5,7 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { db } from "@/lib/db/client";
-import { optimiseWorkshopImage, type WorkshopImageKind } from "@/lib/profile/image";
+import { optimiseWorkshopImage } from "@/lib/profile/image";
+import { WorkshopImageCropper, type CropTarget } from "@/components/profile/workshop-image-cropper";
 import { normalizeWorkshopProfile, splitWorkshopTags, verifiedHttpsUrl, activeBuildCount } from "@/lib/profile/workshop";
 import {
   type BuildStatus,
@@ -78,6 +79,7 @@ export function WorkshopProfileScreen() {
   const [archivedView, setArchivedView] = useState(false);
   const [notice, setNotice] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
+  const [cropRequest, setCropRequest] = useState<{ target: CropTarget; file: File } | null>(null);
 
   const [disciplinesText, setDisciplinesText] = useState("");
   const [toolsText, setToolsText] = useState("");
@@ -152,21 +154,56 @@ export function WorkshopProfileScreen() {
       showNotice("Exported saved profile as a local JSON backup. Keep it private.");
     } catch { showNotice("Could not export the workshop backup."); }
   };
-  const upload = async (file: File | undefined, kind: WorkshopImageKind) => {
+  // Image confirmations persist ONLY the selected media field, never unrelated
+  // unsaved identity fields. A user can therefore cancel other profile edits without
+  // accidentally rolling back an already saved photo.
+  const saveConfirmedCrop = async (data: string) => {
+    if (!cropRequest) throw new Error("No image is selected.");
+    const key = cropRequest.target === "avatar" ? "avatarImage" : "bannerImage";
+    let persisted: WorkshopProfile | null = null;
+    await db.transaction("rw", db.profiles, async () => {
+      const current = normalizeWorkshopProfile(await db.profiles.get("self"));
+      const next = { ...current, [key]: data, updatedAt: new Date().toISOString() };
+      await db.profiles.put(next);
+      persisted = next;
+    });
+    if (!persisted) throw new Error("Failed to persist image.");
+    const savedImage = persisted as WorkshopProfile;
+    setSaved(savedImage);
+    setProfile((current) => ({ ...current, [key]: data }));
+    setCropRequest(null);
+    showNotice(cropRequest.target === "avatar" ? "Profile photo saved automatically." : "Banner saved automatically.");
+    window.dispatchEvent(new Event("noema:profile-updated"));
+  };
+  const uploadGallery = async (file?: File) => {
     if (!file || imageBusy) return;
     setImageBusy(true);
     try {
-      const data = await optimiseWorkshopImage(file, kind);
-      if (kind === "avatar") patch({ avatarImage: data });
-      else if (kind === "banner") patch({ bannerImage: data });
-      else setProfile((current) => ({
-        ...current,
-        gallery: [{ id: crypto.randomUUID(), imageData: data, caption: mediaCaption.trim().slice(0, 120),
-          addedAt: new Date().toISOString() }, ...current.gallery].slice(0, 12),
-      }));
-      showNotice("Image processed locally and added to draft. Save to retain it.");
+      const imageData = await optimiseWorkshopImage(file, "gallery");
+      let persisted: WorkshopProfile | null = null;
+      await db.transaction("rw", db.profiles, async () => {
+        const current = normalizeWorkshopProfile(await db.profiles.get("self"));
+        if (current.gallery.length >= 12) throw new Error("Gallery has reached its 12-image limit.");
+        const next: WorkshopProfile = {
+          ...current,
+          gallery: [{
+            id: crypto.randomUUID(), imageData,
+            caption: mediaCaption.trim().slice(0, 120), addedAt: new Date().toISOString(),
+          }, ...current.gallery],
+          updatedAt: new Date().toISOString(),
+        };
+        await db.profiles.put(next);
+        persisted = next;
+      });
+      if (!persisted) throw new Error("Image could not be stored.");
+      const updated = persisted as WorkshopProfile;
+      setSaved(updated);
+      setProfile((current) => ({ ...current, gallery: updated.gallery }));
+      setMediaCaption("");
+      showNotice("Gallery image saved automatically.");
+      window.dispatchEvent(new Event("noema:profile-updated"));
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Image could not be processed.");
+      showNotice(error instanceof Error ? error.message : "Image could not be saved.");
     } finally { setImageBusy(false); }
   };
   const uploadBuildImage = async (file?: File) => {
@@ -174,8 +211,31 @@ export function WorkshopProfileScreen() {
     setImageBusy(true);
     try {
       const imageData = await optimiseWorkshopImage(file, "gallery");
+      if (buildDraft.id) {
+        let persisted: WorkshopProfile | null = null;
+        await db.transaction("rw", db.profiles, async () => {
+          const current = normalizeWorkshopProfile(await db.profiles.get("self"));
+          if (!current.builds.some((build) => build.id === buildDraft.id)) throw new Error("Project was not saved yet.");
+          const next: WorkshopProfile = {
+            ...current,
+            builds: current.builds.map((build) => build.id === buildDraft.id
+              ? { ...build, imageData, updatedAt: new Date().toISOString() } : build),
+            updatedAt: new Date().toISOString(),
+          };
+          await db.profiles.put(next);
+          persisted = next;
+        });
+        if (!persisted) throw new Error("Project image could not be saved.");
+        const updated = persisted as WorkshopProfile;
+        setSaved(updated);
+        setProfile((current) => ({ ...current,
+          builds: current.builds.map((build) => build.id === buildDraft.id ? { ...build, imageData } : build),
+        }));
+        showNotice("Existing project photo saved automatically.");
+      } else {
+        showNotice("Project photo prepared. Add the new project to save it with its title and details.");
+      }
       setBuildDraft((current) => ({ ...current, imageData }));
-      showNotice("Project image ready. Add or update the build, then save the profile.");
     } catch (error) { showNotice(error instanceof Error ? error.message : "Image could not be processed."); }
     finally { setImageBusy(false); }
   };
@@ -286,9 +346,9 @@ export function WorkshopProfileScreen() {
                     className="object-cover" unoptimized />}
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                 {editing && <label className="absolute right-3 top-2 cursor-pointer rounded-lg border border-white/25 bg-black/80 px-3 py-2 text-[11px] text-white">
-                  {imageBusy ? "Processing…" : "Change banner"}
+                  {imageBusy ? "Processing…" : "Choose banner crop"}
                   <input className="hidden" type="file" accept="image/png,image/jpeg,image/webp"
-                    disabled={imageBusy} onChange={(e) => { void upload(e.target.files?.[0], "banner"); e.target.value = ""; }} />
+                    disabled={imageBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) setCropRequest({ target: "banner", file }); e.target.value = ""; }} />
                 </label>}
               </div>
               <div className="relative border-b border-noema-border px-4 pb-4 sm:px-6">
@@ -305,9 +365,9 @@ export function WorkshopProfileScreen() {
                   </span>
                 </div>
                 {editing && <label className="mt-2 block text-[11px] text-neutral-400">
-                  Change avatar (circle preview)
+                  Change avatar (opens crop editor)
                   <input className="mt-1 block w-full text-xs" type="file" accept="image/png,image/jpeg,image/webp"
-                    disabled={imageBusy} onChange={(e) => { void upload(e.target.files?.[0], "avatar"); e.target.value = ""; }} />
+                    disabled={imageBusy} onChange={(e) => { const file = e.target.files?.[0]; if (file) setCropRequest({ target: "avatar", file }); e.target.value = ""; }} />
                 </label>}
                 <h1 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">{profile.alias || "Your workshop"}</h1>
                 <p className="mt-0.5 break-words text-xs text-neutral-400">
@@ -597,7 +657,7 @@ export function WorkshopProfileScreen() {
                     <label className="block text-xs text-neutral-400">Add photo (JPEG, PNG or WebP, max 4 MB input)
                       <input className="mt-2 block w-full text-xs" type="file" accept="image/jpeg,image/png,image/webp"
                         disabled={imageBusy || profile.gallery.length >= 12}
-                        onChange={(e) => { void upload(e.target.files?.[0], "gallery"); e.target.value = ""; }} /></label>
+                        onChange={(e) => { void uploadGallery(e.target.files?.[0]); e.target.value = ""; }} /></label>
                   </div>}
                 </section>}
 
@@ -634,6 +694,11 @@ export function WorkshopProfileScreen() {
           )}
         </div>
       </div>
+      {cropRequest && <WorkshopImageCropper
+        key={cropRequest.file.name + cropRequest.file.lastModified + cropRequest.target}
+        file={cropRequest.file} target={cropRequest.target}
+        onSave={saveConfirmedCrop} onCancel={() => setCropRequest(null)}
+      />}
     </main>
   );
 }
