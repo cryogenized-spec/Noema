@@ -37,6 +37,7 @@ export function AgentStudioScreen() {
   const { records, hydrate } = useLockboxStore();
 
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null);
+  const [editorTab, setEditorTab] = useState<"identity" | "typography" | "model" | "behavior" | "generation" | "preview">("identity");
   const [advancedAccent, setAdvancedAccent] = useState(false);
   const [advancedFontColor, setAdvancedFontColor] = useState(false);
   const [imageError, setImageError] = useState("");
@@ -116,7 +117,7 @@ export function AgentStudioScreen() {
 
   if (editingAgent) {
     return (
-      <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-noema-border bg-[#0b0b0d] p-4">
+      <section className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-noema-border bg-[#0b0b0d] p-2 sm:p-3">
         <header className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -135,6 +136,23 @@ export function AgentStudioScreen() {
           </button>
         </header>
 
+        <nav className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1 sm:grid-cols-6" aria-label="Agent editor sections">
+          {([
+            ["identity", "Identity"],
+            ["typography", "Fonts"],
+            ["model", "Model"],
+            ["behavior", "Behavior"],
+            ["generation", "Tuning"],
+            ["preview", "Preview"],
+          ] as const).map(([id, title]) => (
+            <button key={id} type="button" aria-current={editorTab === id ? "page" : undefined}
+              className={`min-h-9 rounded-md px-1.5 text-[10px] font-semibold transition sm:text-[11px]
+                ${editorTab === id ? "bg-noema-lime text-black" : "text-neutral-400 hover:bg-white/5 hover:text-white"}`}
+              onClick={() => setEditorTab(id)}>{title}</button>
+          ))}
+        </nav>
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
+          {editorTab === "identity" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-noema-lime">Identity & avatar</h3>
           <input value={editingAgent.name} onChange={(event) => applyDraft({ name: event.target.value })} className="w-full rounded-lg border border-noema-borderSoft bg-black/80 px-3 py-2 text-sm" placeholder="Agent name" />
@@ -182,7 +200,8 @@ export function AgentStudioScreen() {
             </div>
           )}
         </section>
-
+          )}
+          {editorTab === "typography" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Typography</h3>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Choose an agent font">
@@ -218,7 +237,8 @@ export function AgentStudioScreen() {
             </div>
           )}
         </section>
-
+          )}
+          {editorTab === "model" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Model</h3>
           <select
@@ -278,7 +298,8 @@ export function AgentStudioScreen() {
             ))}
           </div>
         </section>
-
+          )}
+          {editorTab === "behavior" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Behavior</h3>
           <textarea rows={3} value={editingAgent.baseSystemPrompt} onChange={(event) => applyDraft({ baseSystemPrompt: event.target.value })} className="w-full rounded-lg border border-noema-borderSoft bg-black/80 px-3 py-2 text-sm" placeholder="Base system prompt" />
@@ -298,7 +319,8 @@ export function AgentStudioScreen() {
           <textarea rows={2} value={editingAgent.memoryHooks ?? ""} onChange={(event) => applyDraft({ memoryHooks: event.target.value })} className="w-full rounded-lg border border-noema-borderSoft bg-black/80 px-3 py-2 text-sm" placeholder="Memory hooks" />
           <textarea rows={2} value={editingAgent.safetyBoundaries ?? ""} onChange={(event) => applyDraft({ safetyBoundaries: event.target.value })} className="w-full rounded-lg border border-noema-borderSoft bg-black/80 px-3 py-2 text-sm" placeholder="Safety boundaries" />
         </section>
-
+          )}
+          {editorTab === "generation" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Generation settings</h3>
           {supportedSettings.map((key) => {
@@ -315,7 +337,8 @@ export function AgentStudioScreen() {
             );
           })}
         </section>
-
+          )}
+          {editorTab === "preview" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Preview</h3>
           <div className="rounded-xl border border-noema-borderSoft bg-black/80 p-3" style={{ borderColor: editingAgent.accentColor }}>
@@ -337,6 +360,8 @@ export function AgentStudioScreen() {
             <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg border border-noema-borderSoft bg-black/80 p-2 text-[11px] text-neutral-300">{previewPrompt}</pre>
           </details>
         </section>
+          )}
+        </div>
       </section>
     );
   }
@@ -353,6 +378,7 @@ export function AgentStudioScreen() {
           className="rounded-lg bg-noema-lime px-3 py-2 text-xs font-semibold text-black"
           onClick={async () => {
             const created = await createAgent(createDefaultAgentProfile());
+            setEditorTab("identity");
             setEditingAgent(created);
           }}
         >
@@ -384,7 +410,7 @@ export function AgentStudioScreen() {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button type="button" className="rounded-md border border-noema-borderSoft p-1.5 text-neutral-300" onClick={() => setEditingAgent(agent)}>
+                    <button type="button" className="rounded-md border border-noema-borderSoft p-1.5 text-neutral-300" onClick={() => { setEditorTab("identity"); setEditingAgent(agent); }}>
                       <Icon icon="solar:pen-bold" />
                     </button>
                     <button type="button" className="rounded-md border border-noema-borderSoft p-1.5 text-neutral-300" onClick={() => void duplicateAgent(agent.id ?? -1)}>
