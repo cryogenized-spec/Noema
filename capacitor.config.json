@@ -1,0 +1,9 @@
+{
+  "appId": "app.noema.mobile",
+  "appName": "NOEMA",
+  "webDir": "out",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": true
+  }
+}
