@@ -135,7 +135,7 @@ export default function ContactBridgePage() {
             </div>)}
           </div>
           <p className="text-xs leading-5 text-neutral-400">
-            Eventually the Cloudflare contact bridge can route a guest's explicit message to the red reception agent,
+            Eventually the Cloudflare contact bridge can route a guest message to the red reception agent,
             but only when authenticated messaging, owner consent, billing limits and per-conversation permissions exist.
           </p>
         </section>
