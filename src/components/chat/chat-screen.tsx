@@ -65,7 +65,15 @@ export function ChatScreen() {
   const { agents, hydrateAgents } = useAgentStore();
   const { records, hydrate: hydrateLockbox, revealKey } = useLockboxStore();
 
-  const [draft, setDraft] = useState("");
+  // Keep unsent text isolated by conversation, including during async send completion.
+  const [drafts, setDrafts] = useState<Record<string,string>>({});
+  const draft = drafts[activeThreadKey] ?? "";
+  const setDraft = (next: string | ((previous: string) => string)) => {
+    setDrafts((current) => {
+      const previous = current[activeThreadKey] ?? "";
+      return { ...current, [activeThreadKey]: typeof next === "function" ? next(previous) : next };
+    });
+  };
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [agentPending, setAgentPending] = useState(false);
   const [showMarkdownMenu, setShowMarkdownMenu] = useState(false);
@@ -83,8 +91,20 @@ export function ChatScreen() {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const sendInFlight = useRef(false);
   const invocationController = useRef<AbortController | null>(null);
+  const threadGeneration = useRef(0);
   // Leaving Chat or changing conversations must cancel pending billable work.
-  useEffect(() => () => invocationController.current?.abort(), [activeThreadKey]);
+  useEffect(() => {
+    ++threadGeneration.current;
+    setEditingMessageId(null);
+    setPendingInvocation(null);
+    setShowAgentPicker(false);
+    setSelectionMode(false);
+    setSelectedIds([]);
+    return () => {
+      ++threadGeneration.current;
+      invocationController.current?.abort();
+    };
+  }, [activeThreadKey]);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -222,6 +242,10 @@ export function ChatScreen() {
     targetMessageId?: number,
   ) => {
     const invocationThreadKey = activeThreadKey;
+    const generation = threadGeneration.current;
+    const current = () => generation === threadGeneration.current &&
+      useChatStore.getState().activeThreadKey === invocationThreadKey;
+    if (!current()) return;
     if (!hasProviderAdapter(agent.providerId)) {
       await addMessage({ threadKey:invocationThreadKey, role: "system", content: `Provider adapter for ${agent.providerId} is not available yet.` });
       return;
@@ -241,12 +265,14 @@ export function ChatScreen() {
       return;
     }
 
+    // Obsolete caller continuations must not cancel a newer conversation's request.
+    if (!current()) return;
     invocationController.current?.abort();
     const controller = new AbortController();
     invocationController.current = controller;
     try {
       const apiKey = await revealKey(agent.providerId);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !current()) return;
       const built = buildAgentExecutionPayload({
         invocation: createInvocationDescriptor({
           threadId: invocationThreadKey, sourceMessageId: targetMessageId, sourceMessageContent: prompt,
@@ -262,6 +288,7 @@ export function ChatScreen() {
         await addMessage({ threadKey:invocationThreadKey, role: "system", content: built.message });
         return;
       }
+      if (controller.signal.aborted || !current()) return;
       const response = await fetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -273,32 +300,32 @@ export function ChatScreen() {
         const message = response.status === 503
           ? "Agent gateway is disabled until a secure test session is configured."
           : "OpenAI request failed. Check your model, API key and connectivity.";
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted && current())
           await addMessage({ threadKey:invocationThreadKey, role: "system", content: message });
         return;
       }
       if (agent.streamingMode === "oneshot") {
         const result = await response.json() as { content?: string };
         if (!result.content) throw new Error("Empty OpenAI response.");
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted && current())
           await insertAgentResponse(invocationThreadKey, agent, result.content, mode, outputVisibility, targetMessageId);
         return;
       }
       if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream"))
         throw new Error("OpenAI streaming was not available.");
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !current()) return;
       const created = await insertAgentResponse(invocationThreadKey, agent, "", mode, outputVisibility, targetMessageId);
       if (!created?.id) return;
       let lastRendered = 0;
       const finalText = await readOpenAIStream(response.body, async (assembled) => {
-        if (!controller.signal.aborted && assembled.length - lastRendered >= 80) {
+        if (!controller.signal.aborted && current() && assembled.length - lastRendered >= 80) {
           await updateMessage(created.id!, assembled);
           lastRendered = assembled.length;
         }
       });
-      if (!controller.signal.aborted) await updateMessage(created.id, finalText);
+      if (!controller.signal.aborted && current()) await updateMessage(created.id, finalText);
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && current()) {
         const message = error instanceof Error ? error.message : "Unknown error";
         await addMessage({ threadKey:invocationThreadKey, role: "system", content: "Agent request stopped: " + message });
       }
@@ -347,9 +374,11 @@ export function ChatScreen() {
         setDraft("");
         return;
       }
-      await addMessage({ role: "user", content: trimmed });
+      const sendingThread = activeThreadKey;
+      await addMessage({ role: "user", threadKey:sendingThread, content: trimmed });
       setDraft("");
-      if (!activeAgent || agentPending) return;
+      if (useChatStore.getState().activeThreadKey !== sendingThread ||
+          !activeAgent || agentPending) return;
       setAgentPending(true);
       try {
         await runDirectAgentReply(trimmed);
@@ -567,7 +596,9 @@ export function ChatScreen() {
                     type="button"
                     className={`block w-full rounded-lg px-2 py-1 text-left text-xs ${activeAgentId === agent.id ? "bg-noema-violet/20 text-slate-100" : "text-slate-300 hover:bg-white/5"}`}
                     onClick={async () => {
-                      await setThreadAgentId(activeThreadKey, agent.id ?? null);
+                      const requestedThread = activeThreadKey;
+                      await setThreadAgentId(requestedThread, agent.id ?? null);
+                      if (useChatStore.getState().activeThreadKey !== requestedThread) return;
                       setShowAgentPicker(false);
 
                       if (pendingInvocation) {
