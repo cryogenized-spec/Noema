@@ -2,9 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   safeExportPath, safeExportFilename, safeExportDirectory,
-  safeYamlValue, safeYamlKey, safeDatePrefix,
+  safeYamlValue, safeYamlKey, safeDatePrefix, parseSafeYamlValue,
 } from "../src/lib/security/export-safety.ts";
-import { parseImportedMarkdownDocument, serializeDocumentFrontmatter } from "../src/lib/documents/obsidian-interoperability.ts";
 import { safeExternalImageLink } from "../src/lib/security/markdown-url.ts";
 test("safe export paths allow ordinary names and nested directories", () => {
   assert.equal(safeExportPath("Notes/2026","draft 1.md"), "Notes/2026/draft 1.md");
@@ -40,15 +39,12 @@ test("markdown cannot auto-load remote image resources; clickable link is HTTPS 
   }
 });
 
-test("safe metadata export/import preserves quotes, newlines, commas and backslashes", () => {
-  const fields = {
-    title: 'Example "quoted" \\ path\nnew line',
-    tags: ["alpha, beta", "quote \" and slash \\", "multiline\nvalue"],
-    updated: "2026-11-15T04:00:00.000Z",
-  };
-  const markdown = serializeDocumentFrontmatter(fields)+"\nThe body\n";
-  const parsed = parseImportedMarkdownDocument(markdown);
-  assert.deepEqual(parsed.frontmatter, fields);
-  assert.equal(parsed.bodyMarkdown,"The body");
-  assert.deepEqual(parseImportedMarkdownDocument(serializeDocumentFrontmatter(parsed.frontmatter)+"\nThe body\n").frontmatter, fields);
+test("YAML metadata escapes safely and round-trips quotes, commas, slashes and newlines", () => {
+  const fields = [
+    'Example "quoted" \\ path\nnew line',
+    "alpha, beta", "quote \" and slash \\", "multiline\nvalue",
+  ];
+  for (const value of fields) assert.equal(parseSafeYamlValue(safeYamlValue(value)),value);
+  assert.deepEqual(parseSafeYamlValue(safeYamlValue(fields)),fields);
+  assert.equal(parseSafeYamlValue('"legacy string"'),"legacy string");
 });

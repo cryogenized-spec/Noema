@@ -1,6 +1,6 @@
 import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { CreateDocumentInput, DocumentRecord } from "@/types/documents";
-import { safeExportPath, safeYamlKey, safeYamlValue, safeDatePrefix } from "@/lib/security/export-safety";
+import { safeExportPath, safeYamlKey, safeYamlValue, safeDatePrefix, parseSafeYamlValue } from "@/lib/security/export-safety";
 
 export interface DocumentFrontmatter {
   title?: string;
@@ -84,26 +84,6 @@ export const planDocumentsVaultExport = (
   };
 };
 
-/** Parse our JSON-compatible safe YAML scalars; keep a narrow fallback for old exports. */
-const parseYamlValue = (value: string): string | string[] | null => {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('"') || trimmed.startsWith("[")) {
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (typeof parsed === "string") return parsed;
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string"))
-        return parsed;
-    } catch { /* Legacy YAML quoting: handle below without executing YAML tags. */ }
-  }
-  if (trimmed.startsWith("[") && trimmed.endsWith("]"))
-    return trimmed.slice(1,-1).split(",")
-      .map((item) => item.trim().replace(/^"|"$/g, "")).filter(Boolean);
-  if (trimmed.startsWith('"') && trimmed.endsWith('"'))
-    return trimmed.slice(1,-1).replace(/\\"/g,'"');
-  return trimmed;
-};
-
 export const parseImportedMarkdownDocument = (content: string): { frontmatter?: DocumentFrontmatter; bodyMarkdown: string } => {
   const normalized = content.replace(/\r\n/g, "\n").trim();
   if (!normalized.startsWith("---\n")) {
@@ -127,7 +107,7 @@ export const parseImportedMarkdownDocument = (content: string): { frontmatter?: 
     const rawValue = rawValueParts.join(":").trim();
     if (!rawValue) continue;
 
-    const decoded = parseYamlValue(rawValue);
+    const decoded = parseSafeYamlValue(rawValue);
     if (decoded !== null) frontmatter[key] = decoded;
   }
 

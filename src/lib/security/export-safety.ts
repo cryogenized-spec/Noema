@@ -49,3 +49,23 @@ export function safeDatePrefix(value: string): string {
   const prefix = typeof value === "string" ? value.slice(0, 10) : "";
   return /^\d{4}-\d{2}-\d{2}$/.test(prefix) ? prefix : "undated";
 }
+
+/** Parse our JSON-compatible safe YAML scalars; keep a narrow fallback for old exports. */
+export function parseSafeYamlValue (value: string): string | string[] | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('"') || trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (typeof parsed === "string") return parsed;
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string"))
+        return parsed;
+    } catch { /* Legacy YAML quoting: handle below without executing YAML tags. */ }
+  }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]"))
+    return trimmed.slice(1,-1).split(",")
+      .map((item) => item.trim().replace(/^"|"$/g, "")).filter(Boolean);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    return trimmed.slice(1,-1).replace(/\\"/g,'"');
+  return trimmed;
+}
