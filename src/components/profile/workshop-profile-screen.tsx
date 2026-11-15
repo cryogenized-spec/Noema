@@ -467,7 +467,14 @@ export function WorkshopProfileScreen() {
                     </div>}
                   </section>
                   <section className={panelClass + " space-y-2"}>
-                    <h2 className="text-sm font-semibold text-noema-lime">Data ownership</h2>
+                    <h2 className="text-sm font-semibold text-noema-lime">Contact & data ownership</h2>
+                    <Link href="/share" className={primaryButton + " inline-flex items-center gap-2"}>
+                      <Icon icon="solar:link-round-linear" aria-hidden="true" />
+                      Contact link / QR demonstration
+                    </Link>
+                    <p className="text-[11px] leading-5 text-neutral-500">
+                      The sharing screen is a safe, local preview. Live invitations and agent replies are not connected yet.
+                    </p>
                     <p className="text-xs leading-5 text-neutral-400">
                       The local-first approach from RADIX is preserved. Your profile is not public or encrypted by the API Lockbox.
                       It can be lost when browser data is cleared. Export a JSON backup to retain a private copy.
