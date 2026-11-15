@@ -58,7 +58,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-noema-muted">WORKSPACE / {activeTab.toUpperCase()}</p>
-              <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">{activeTab === "chat" ? "Conversations" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h2>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">{activeTab === "chat" ? "Conversations" : activeTab === "agents" ? "AI Studio" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h2>
             </div>
             <span className="rounded-md border border-noema-border px-2.5 py-1.5 text-[10px] text-neutral-400">LOCAL FIRST</span>
           </div>
