@@ -13,11 +13,17 @@ export function TopBar() {
           <p className="text-[10px] tracking-wide text-noema-muted">COMMUNICATION / INTELLIGENCE</p>
         </div>
       </div>
+      <div className="flex shrink-0 items-center gap-2">
+      <Link href="/profile" aria-label="Open your workshop profile" title="Workshop profile"
+        className="flex h-9 w-9 items-center justify-center rounded-full border border-noema-border bg-[#171719] text-noema-lime transition hover:border-noema-lime">
+        <Icon icon="solar:user-circle-bold" className="text-xl" aria-hidden="true"/>
+      </Link>
       <Link href="/invite/demo" className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-noema-border bg-[#161618] px-3 py-2 text-xs font-medium text-white transition hover:border-noema-lime/60 hover:text-noema-lime">
         <Icon icon="solar:link-round-bold" className="text-base" aria-hidden="true"/>
         <span className="hidden sm:inline">Try invitation</span>
         <span className="sm:hidden">Invite</span>
       </Link>
+      </div>
     </header>
   );
 }
