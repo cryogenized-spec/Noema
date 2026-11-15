@@ -51,7 +51,7 @@ export function safeDatePrefix(value: string): string {
 }
 
 /** Parse our JSON-compatible safe YAML scalars; keep a narrow fallback for old exports. */
-export function parseSafeYamlValue (value: string): string | string[] | null => {
+export function parseSafeYamlValue(value: string): string | string[] | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('"') || trimmed.startsWith("[")) {
