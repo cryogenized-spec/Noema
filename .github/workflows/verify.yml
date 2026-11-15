@@ -1,7 +1,7 @@
 name: NOEMA strict verification
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/noema-security-ci-responses-hardening]
   push:
     branches: [main]
   workflow_dispatch:
