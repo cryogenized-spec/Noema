@@ -39,7 +39,7 @@ export default function HomePage() {
 
   return (
     <main className="flex h-dvh min-w-0 flex-col overflow-hidden bg-noema-midnight text-white">
-      <TopBar onMenuToggle={toggleNavigation} menuOpen={mobileMenuOpen || desktopRailOpen} />
+      <TopBar onMenuToggle={toggleNavigation} mobileMenuOpen={mobileMenuOpen} desktopRailOpen={desktopRailOpen} />
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
         <WorkspaceNavigation activeTab={activeTab} onTabChange={setActiveTab}
           mobileOpen={mobileMenuOpen} desktopOpen={desktopRailOpen}
