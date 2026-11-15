@@ -39,6 +39,8 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
   const handled = useRef(new Set<string>());
   const stopped = useRef(false);
   const agentController = useRef<AbortController | null>(null);
+  const pendingPollController = useRef<AbortController | null>(null);
+  const refreshEpoch = useRef(0);
   const activeAgentThread = useRef<string | null>(null);
   const lastRenewAttempt = useRef(0);
   const agentRetryAfter = useRef(0);
@@ -55,12 +57,18 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
     void ensureRelaySession().then((value) => {
       if (!stopped.current) { setSession(value); setConnected(true); }
     }).catch((e:unknown) => { if (!stopped.current) setError(prettyError(e)); });
-    return () => { stopped.current = true; agentController.current?.abort(); };
+    return () => {
+      stopped.current = true;
+      ++refreshEpoch.current;
+      pendingPollController.current?.abort();
+      agentController.current?.abort();
+    };
   }, []);
 
   const refresh = useCallback(async () => {
     if (!session || runningRef.current || (inviteToken && !inviteConsumed)) return;
     runningRef.current = true;
+    const epoch = refreshEpoch.current;
     const renew = async () => {
       if (Date.now() - lastRenewAttempt.current < 30000) {
         throw new Error("Relay session renewal is temporarily unavailable.");
@@ -76,13 +84,13 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
         return;
       }
       const inbox = await relayGetThreads(session);
-      if (stopped.current) return;
+      if (stopped.current || epoch !== refreshEpoch.current) return;
       setThreads(inbox.threads);
       const selectedId = activeIdRef.current;
       if (selectedId && inbox.threads.some((thread) => thread.id === selectedId)) {
         const response = await relayGetMessages(session, selectedId);
         // A previous selected thread's delayed response must not repaint the new one.
-        if (!stopped.current && activeIdRef.current === selectedId)
+        if (!stopped.current && epoch === refreshEpoch.current && activeIdRef.current === selectedId)
           setMessages(response.messages);
       }
 
@@ -91,10 +99,20 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
       if (!agentRunning.current && unlocked &&
           records.some((record) => record.providerId === "openai") &&
           Date.now() >= agentRetryAfter.current) {
-        const pending = await relayFetch<{pending:Array<{threadId:string; message:RelayMessage}>}>(
-          "/v1/reception/pending", {session},
-        );
-        const item = pending.pending.find((entry) => !handled.current.has(entry.message.id));
+        const pendingController = new AbortController();
+        pendingPollController.current = pendingController;
+        let response: {pending:Array<{threadId:string; message:RelayMessage}>};
+        try {
+          response = await relayFetch<{pending:Array<{threadId:string; message:RelayMessage}>}>(
+            "/v1/reception/pending", {session,signal:pendingController.signal},
+          );
+        } finally {
+          if (pendingPollController.current === pendingController) pendingPollController.current = null;
+        }
+        // Never issue an agent claim after leaving this view or changing sessions.
+        if (stopped.current || epoch !== refreshEpoch.current ||
+            (inviteToken && !inviteConsumed)) return;
+        const item = response.pending.find((entry) => !handled.current.has(entry.message.id));
         if (item) {
           const id = item.threadId, next = item.message;
           agentRunning.current = true;
@@ -105,6 +123,8 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
           try {
             // Unlock before taking a paid-request lease so failed unlocks cost nothing.
             const apiKey = await revealKey("openai");
+            if (controller.signal.aborted || stopped.current || epoch !== refreshEpoch.current)
+              return;
             const model = records.find((record) => record.providerId === "openai")?.defaultModelId || "gpt-4.1-mini";
             const claim = await relayFetch<{claimToken:string}>(
               "/v1/threads/" + id + "/agent-claim", {
@@ -112,6 +132,8 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
               },
             );
             handled.current.add(next.id);
+            if (controller.signal.aborted || stopped.current || epoch !== refreshEpoch.current)
+              return;
             const upstream = await fetch(relayOrigin + "/v1/threads/" + id + "/agent-response", {
               method:"POST", signal:controller.signal,
               headers:{ Authorization:"Bearer " + session.token, "Content-Type":"application/json" },
@@ -129,6 +151,9 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
                 setMessages(after.messages);
             }
           } catch (error:unknown) {
+            // The server's permanent consumed marker prevents rebilling. If we never
+            // reached billing, removing the local marker permits a later safe retry.
+            handled.current.delete(next.id);
             if (!controller.signal.aborted && !stopped.current) {
               if (error instanceof RelayError && error.code === "AGENT_BUDGET_EXHAUSTED") {
                 // Server budgets use UTC calendar days.
@@ -168,7 +193,11 @@ export function RelayWorkspace({ inviteToken }: { inviteToken?: string }) {
     if (!session || (inviteToken && !inviteConsumed)) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), 4000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      ++refreshEpoch.current;
+      pendingPollController.current?.abort();
+    };
   }, [session, refresh, inviteToken, inviteConsumed]);
 
   const activeThread = threads.find((t) => t.id === activeId);
