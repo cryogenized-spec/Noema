@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Icon } from "@iconify/react";
+import { calculateCropPlacement } from "@/lib/profile/crop-geometry";
 
 export type CropTarget = "avatar" | "banner";
 type Position = { x: number; y: number };
@@ -23,14 +24,10 @@ export function renderWorkshopCrop(
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Your browser does not support image editing.");
   context.clearRect(0, 0, width, height);
-  // COVER guarantees the cropping window contains no unfilled edges.
-  const baseScale = Math.max(width / source.width, height / source.height);
-  const imageWidth = source.width * baseScale * zoom;
-  const imageHeight = source.height * baseScale * zoom;
-  const surplusX = Math.max(0, imageWidth - width);
-  const surplusY = Math.max(0, imageHeight - height);
-  const dx = (width - imageWidth) / 2 + position.x * (surplusX / 2);
-  const dy = (height - imageHeight) / 2 + position.y * (surplusY / 2);
+  // COVER math is shared with unit tests so a crop never exposes blank edges.
+  const { imageWidth, imageHeight, dx, dy } = calculateCropPlacement(
+    source.width, source.height, width, height, zoom, position,
+  );
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   context.drawImage(source, dx, dy, imageWidth, imageHeight);
