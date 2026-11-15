@@ -17,7 +17,8 @@ import {
 import { composeAgentSystemPrompt, createAgentPreviewReply } from "@/lib/agents/prompt-composer";
 import { getSupportedAgentSettings, sanitizeAgentGenerationSettings, settingLabels, type AgentGenerationSettingKey } from "@/lib/agents/generation";
 import { formatModelPricingSummary, getProviderConfiguration } from "@/lib/providers/compatibility";
-import type { AgentAvatarShape, AgentProfile } from "@/types/agents";
+import type { AgentAvatarShape, AgentProfile, AgentRole } from "@/types/agents";
+import { AGENT_ROLE_DEFINITIONS, normalizeAgentRoles } from "@/lib/agents/role-routing";
 
 const shapeOptions: AgentAvatarShape[] = ["square", "circle", "portrait"];
 
@@ -37,10 +38,11 @@ export function AgentStudioScreen() {
   const { records, hydrate } = useLockboxStore();
 
   const [editingAgent, setEditingAgent] = useState<AgentProfile | null>(null);
-  const [editorTab, setEditorTab] = useState<"identity" | "typography" | "model" | "behavior" | "generation" | "preview">("identity");
+  const [editorTab, setEditorTab] = useState<"identity" | "typography" | "model" | "behavior" | "generation" | "preview" | "roles">("identity");
   const [advancedAccent, setAdvancedAccent] = useState(false);
   const [advancedFontColor, setAdvancedFontColor] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -100,19 +102,23 @@ export function AgentStudioScreen() {
 
   const saveAgent = async () => {
     if (!editingAgent) return;
+    setSaveError("");
 
     const cleaned = {
       ...editingAgent,
       generationSettings: sanitizeAgentGenerationSettings(editingAgent.generationSettings, selectedProvider, selectedModel),
     };
 
-    if (!cleaned.id) {
-      const created = await createAgent(cleaned);
-      setEditingAgent(created);
-      return;
+    try {
+      if (!cleaned.id) {
+        const created = await createAgent(cleaned);
+        setEditingAgent(created);
+        return;
+      }
+      await updateAgent(cleaned.id, cleaned);
+    } catch {
+      setSaveError("Could not save the agent or its role assignments. Please check browser storage and retry.");
     }
-
-    await updateAgent(cleaned.id, cleaned);
   };
 
   if (editingAgent) {
@@ -136,7 +142,7 @@ export function AgentStudioScreen() {
           </button>
         </header>
 
-        <nav className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1 sm:grid-cols-6" aria-label="Agent editor sections">
+        <nav className="grid shrink-0 grid-cols-4 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1 sm:grid-cols-7" aria-label="Agent editor sections">
           {([
             ["identity", "Identity"],
             ["typography", "Fonts"],
@@ -144,6 +150,7 @@ export function AgentStudioScreen() {
             ["behavior", "Behavior"],
             ["generation", "Tuning"],
             ["preview", "Preview"],
+            ["roles", "Roles"],
           ] as const).map(([id, title]) => (
             <button key={id} type="button" aria-current={editorTab === id ? "page" : undefined}
               className={`min-h-9 rounded-md px-1.5 text-[10px] font-semibold transition sm:text-[11px]
@@ -151,6 +158,7 @@ export function AgentStudioScreen() {
               onClick={() => setEditorTab(id)}>{title}</button>
           ))}
         </nav>
+        {saveError && <p role="alert" className="rounded-lg border border-rose-300/40 bg-rose-950/20 px-3 py-2 text-xs text-rose-200">{saveError}</p>}
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-0.5">
           {editorTab === "identity" && (
         <section className="space-y-2 rounded-xl border border-noema-borderSoft bg-[#111113] p-3">
@@ -361,6 +369,61 @@ export function AgentStudioScreen() {
           </details>
         </section>
           )}
+          {editorTab === "roles" && (
+            <section className="space-y-3 rounded-xl border border-noema-border bg-[#111113] p-3">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-noema-lime">Agent responsibilities</h3>
+                <p className="mt-2 text-xs leading-5 text-neutral-400">
+                  Adapted from RADIX's six colour pins. One agent owns each responsibility. An agent may hold several.
+                  Assignments are saved locally; no incoming guest traffic or automation is currently activated.
+                </p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {AGENT_ROLE_DEFINITIONS.map((role) => {
+                  const assigned = normalizeAgentRoles(editingAgent.roleAssignments).includes(role.id);
+                  const otherOwner = agents.find((agent) => agent.id !== editingAgent.id
+                    && normalizeAgentRoles(agent.roleAssignments).includes(role.id));
+                  return (
+                    <button key={role.id} type="button" aria-pressed={assigned}
+                      onClick={() => {
+                        const selected = normalizeAgentRoles(editingAgent.roleAssignments);
+                        const next: AgentRole[] = assigned
+                          ? selected.filter((entry) => entry !== role.id)
+                          : [...selected, role.id];
+                        applyDraft({ roleAssignments: next });
+                      }}
+                      className={`rounded-lg border p-3 text-left transition hover:bg-white/[0.04]
+                        ${assigned ? "bg-white/[0.05]" : "border-noema-border bg-black/40"}`}
+                      style={assigned ? { borderColor: role.color } : undefined}>
+                      <div className="flex items-center gap-2">
+                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: role.color }} />
+                        <strong className="flex-1 text-sm text-white">{role.label}</strong>
+                        <span className="text-[11px] text-noema-lime">{assigned ? "Assigned" : "Assign"}</span>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-5 text-neutral-400">{role.description}</p>
+                      {otherOwner && <p className="mt-2 text-[11px] text-noema-gold">
+                        Currently: {otherOwner.name}. Saving this assignment will transfer the role.
+                      </p>}
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="block text-xs text-neutral-300">
+                Planned guest visibility
+                <select value={editingAgent.guestVisibility ?? "private"}
+                  onChange={(event) => applyDraft({ guestVisibility: event.target.value === "invited" ? "invited" : "private" })}
+                  className="mt-2 w-full rounded-lg border border-noema-border bg-black px-3 py-2 text-sm">
+                  <option value="private">Private to owner</option>
+                  <option value="invited">Invited guests (future only)</option>
+                </select>
+              </label>
+              <p className="rounded-lg border border-noema-gold/30 bg-[#201811] p-3 text-[11px] leading-5 text-neutral-300">
+                These selections do not grant permission to read files, use MCP tools, send messages,
+                spend API credits or impersonate you. Guest auto-reply will remain disabled until
+                authenticated E2EE delivery, explicit owner approval and consumption limits are implemented.
+              </p>
+            </section>
+          )}
         </div>
       </section>
     );
@@ -420,6 +483,17 @@ export function AgentStudioScreen() {
                       <Icon icon="solar:trash-bin-trash-bold" />
                     </button>
                   </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {AGENT_ROLE_DEFINITIONS.filter((role) =>
+                    normalizeAgentRoles(agent.roleAssignments).includes(role.id)).map((role) => (
+                    <span key={role.id} className="inline-flex items-center gap-1 rounded-md border border-noema-border bg-black/40 px-2 py-1 text-[10px] text-neutral-300">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: role.color }} />
+                      {role.shortLabel}
+                    </span>
+                  ))}
+                  {normalizeAgentRoles(agent.roleAssignments).length === 0 &&
+                    <span className="text-[11px] text-neutral-500">No responsibilities assigned</span>}
                 </div>
                 <div className="mt-2 h-1 rounded-full" style={{ backgroundColor: agent.accentColor }} />
               </article>
