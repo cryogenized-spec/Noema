@@ -16,10 +16,12 @@
 
 html {
   background: var(--noema-bg);
+  overflow-x: clip;
 }
 
 body {
   min-height: 100vh;
+  min-width: 0;
   margin: 0;
   background:
     radial-gradient(ellipse 55% 34% at 100% 0%, rgba(112, 36, 61, 0.13), transparent 75%),
