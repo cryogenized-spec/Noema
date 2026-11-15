@@ -1,5 +1,6 @@
 import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
 import type { AgentFontFamily, AgentProfile } from "@/types/agents";
+import { sanitizeAgentGenerationSettings } from "@/lib/providers/compatibility";
 
 export const AGENT_FONT_OPTIONS: Array<{ id: AgentFontFamily; label: string; className: string }> = [
   { id: "inter", label: "Inter", className: "font-agent-inter" },
@@ -54,7 +55,7 @@ export function createDefaultAgentProfile(): AgentProfile {
     providerId: provider.id,
     modelId: model.modelId,
     streamingMode: "stream",
-    generationSettings: { temperature: model.defaultTemperature ?? 0.8 },
+    generationSettings: sanitizeAgentGenerationSettings({}, provider, model),
     baseSystemPrompt: "You are a helpful assistant.",
     characterDefinition: "",
     speechStyle: "Clear, calm, and practical.",
