@@ -82,6 +82,9 @@ export function ChatScreen() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const sendInFlight = useRef(false);
+  const invocationController = useRef<AbortController | null>(null);
+  // Leaving Chat or changing conversations must cancel pending billable work.
+  useEffect(() => () => invocationController.current?.abort(), [activeThreadKey]);
 
   useEffect(() => {
     if (!hydrated && !hydrating) {
@@ -177,6 +180,7 @@ export function ChatScreen() {
   };
 
   const insertAgentResponse = async (
+    threadKey: string,
     agent: AgentProfile,
     content: string,
     mode: AgentInvocationMode,
@@ -187,6 +191,7 @@ export function ChatScreen() {
 
     return addMessage({
       role: "agent",
+      threadKey,
       content,
       metadata: {
         provider: provider?.displayName ?? agent.providerId,
@@ -216,8 +221,9 @@ export function ChatScreen() {
     outputVisibility: "public" | "ghost",
     targetMessageId?: number,
   ) => {
+    const invocationThreadKey = activeThreadKey;
     if (!hasProviderAdapter(agent.providerId)) {
-      await addMessage({ role: "system", content: `Provider adapter for ${agent.providerId} is not available yet.` });
+      await addMessage({ threadKey:invocationThreadKey, role: "system", content: `Provider adapter for ${agent.providerId} is not available yet.` });
       return;
     }
 
@@ -225,21 +231,25 @@ export function ChatScreen() {
     const model = provider?.models.find((item) => item.modelId === agent.modelId);
 
     if (!provider || !model) {
-      await addMessage({ role: "system", content: "Selected agent has invalid provider/model metadata." });
+      await addMessage({ threadKey:invocationThreadKey, role: "system", content: "Selected agent has invalid provider/model metadata." });
       return;
     }
 
     const providerConfig = records.find((record) => record.providerId === agent.providerId);
     if (!providerConfig) {
-      await addMessage({ role: "system", content: `Configure ${provider.displayName} in API Lockbox before invoking this agent.` });
+      await addMessage({ threadKey:invocationThreadKey, role: "system", content: `Configure ${provider.displayName} in API Lockbox before invoking this agent.` });
       return;
     }
 
+    invocationController.current?.abort();
+    const controller = new AbortController();
+    invocationController.current = controller;
     try {
       const apiKey = await revealKey(agent.providerId);
+      if (controller.signal.aborted) return;
       const built = buildAgentExecutionPayload({
         invocation: createInvocationDescriptor({
-          threadId: activeThreadKey, sourceMessageId: targetMessageId, sourceMessageContent: prompt,
+          threadId: invocationThreadKey, sourceMessageId: targetMessageId, sourceMessageContent: prompt,
           agentId: agent.id ?? -1, mode, outputMode: outputVisibility,
         }),
         agent, provider, model, providerConfig, providerApiKey: apiKey,
@@ -249,7 +259,7 @@ export function ChatScreen() {
         streamingMode: agent.streamingMode,
       });
       if (!built.ok) {
-        await addMessage({ role: "system", content: built.message });
+        await addMessage({ threadKey:invocationThreadKey, role: "system", content: built.message });
         return;
       }
       const response = await fetch("/api/agent", {
@@ -257,35 +267,43 @@ export function ChatScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, executionPayload: built.payload }),
         cache: "no-store",
+        signal: controller.signal,
       });
       if (!response.ok) {
         const message = response.status === 503
           ? "Agent gateway is disabled until a secure test session is configured."
           : "OpenAI request failed. Check your model, API key and connectivity.";
-        await addMessage({ role: "system", content: message });
+        if (!controller.signal.aborted)
+          await addMessage({ threadKey:invocationThreadKey, role: "system", content: message });
         return;
       }
       if (agent.streamingMode === "oneshot") {
         const result = await response.json() as { content?: string };
         if (!result.content) throw new Error("Empty OpenAI response.");
-        await insertAgentResponse(agent, result.content, mode, outputVisibility, targetMessageId);
+        if (!controller.signal.aborted)
+          await insertAgentResponse(invocationThreadKey, agent, result.content, mode, outputVisibility, targetMessageId);
         return;
       }
       if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream"))
         throw new Error("OpenAI streaming was not available.");
-      const created = await insertAgentResponse(agent, "", mode, outputVisibility, targetMessageId);
+      if (controller.signal.aborted) return;
+      const created = await insertAgentResponse(invocationThreadKey, agent, "", mode, outputVisibility, targetMessageId);
       if (!created?.id) return;
       let lastRendered = 0;
       const finalText = await readOpenAIStream(response.body, async (assembled) => {
-        if (assembled.length - lastRendered >= 80) {
+        if (!controller.signal.aborted && assembled.length - lastRendered >= 80) {
           await updateMessage(created.id!, assembled);
           lastRendered = assembled.length;
         }
       });
-      await updateMessage(created.id, finalText);
+      if (!controller.signal.aborted) await updateMessage(created.id, finalText);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      await addMessage({ role: "system", content: "Agent request stopped: " + message });
+      if (!controller.signal.aborted) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        await addMessage({ threadKey:invocationThreadKey, role: "system", content: "Agent request stopped: " + message });
+      }
+    } finally {
+      if (invocationController.current === controller) invocationController.current = null;
     }
   };
 
