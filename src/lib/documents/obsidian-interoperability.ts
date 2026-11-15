@@ -1,5 +1,6 @@
 import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { CreateDocumentInput, DocumentRecord } from "@/types/documents";
+import { safeExportPath, safeYamlKey, safeYamlValue, safeDatePrefix } from "@/lib/security/export-safety";
 
 export interface DocumentFrontmatter {
   title?: string;
@@ -24,9 +25,7 @@ export const DEFAULT_DOCUMENT_EXPORT_LAYOUT: ObsidianExportLayout = {
   assetsDir: "Assets",
 };
 
-const sanitizeYamlString = (value: string) => value.replace(/"/g, '\\"');
-const toYamlValue = (value: string | string[]) =>
-  Array.isArray(value) ? `[${value.map((item) => `"${sanitizeYamlString(item)}"`).join(", ")}]` : `"${sanitizeYamlString(value)}"`;
+const toYamlValue = safeYamlValue;
 
 export const buildDocumentFrontmatter = (document: DocumentRecord): DocumentFrontmatter => ({
   title: document.title,
@@ -43,7 +42,7 @@ export const serializeDocumentFrontmatter = (frontmatter: DocumentFrontmatter): 
   });
 
   if (entries.length === 0) return "";
-  const body = entries.map(([key, value]) => `${key}: ${toYamlValue(value as string | string[])}`).join("\n");
+  const body = entries.map(([key, value]) => `${safeYamlKey(key)}: ${toYamlValue(value as string | string[])}`).join("\n");
   return `---\n${body}\n---\n`;
 };
 
@@ -59,7 +58,7 @@ const toFileSlug = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "document";
 
-export const buildDocumentFileName = (document: DocumentRecord) => `${document.updatedAt.slice(0, 10)}-${toFileSlug(document.title)}.md`;
+export const buildDocumentFileName = (document: DocumentRecord) => `${safeDatePrefix(document.updatedAt)}-${toFileSlug(document.title)}.md`;
 
 export const prepareWikilinkTarget = (title: string) => `[[${title.trim()}]]`;
 export const prepareEmbedTarget = (fileName: string) => `![[${fileName.trim()}]]`;
@@ -70,12 +69,12 @@ export const planDocumentsVaultExport = (
   layout: ObsidianExportLayout = DEFAULT_DOCUMENT_EXPORT_LAYOUT,
 ): { layout: ObsidianExportLayout; files: PlannedDocumentExportFile[] } => {
   const noteFiles = documents.map((document) => ({
-    path: `${layout.notesDir}/${buildDocumentFileName(document)}`,
+    path: safeExportPath(layout.notesDir, buildDocumentFileName(document)),
     content: renderDocumentAsMarkdown(document),
   }));
 
   const assetPlaceholders = attachments.map((asset) => ({
-    path: `${layout.assetsDir}/${asset.fileName}`,
+    path: safeExportPath(layout.assetsDir, asset.fileName),
     content: `# Placeholder for ${asset.fileName}\nlocalRef: ${asset.localRef}\nmimeType: ${asset.mimeType}\n`,
   }));
 
@@ -114,6 +113,7 @@ export const parseImportedMarkdownDocument = (content: string): { frontmatter?: 
     const [rawKey, ...rawValueParts] = line.split(":");
     if (!rawKey || rawValueParts.length === 0) continue;
     const key = rawKey.trim();
+    try { safeYamlKey(key); } catch { continue; }
     const rawValue = rawValueParts.join(":").trim();
     if (!rawValue) continue;
 

@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import { transformObsidianTokens } from "@/lib/markdown/contract";
+import { safeExternalImageLink } from "@/lib/security/markdown-url";
 
 interface MarkdownRendererProps {
   content: string;
@@ -85,6 +86,16 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         ul: ({ children }) => <ul className="mb-2 list-disc space-y-1 pl-4 text-slate-100 last:mb-0">{children}</ul>,
         ol: ({ children }) => <ol className="mb-2 list-decimal space-y-1 pl-4 text-slate-100 last:mb-0">{children}</ol>,
         li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        img: ({ src, alt }) => {
+          // Guest/AI markdown must not silently request third-party tracking pixels.
+          const link = safeExternalImageLink(src);
+          return <span className="rounded bg-slate-900/60 px-1 text-xs text-slate-400">
+            Image: {alt || "attachment"}
+            {link ? <a href={link} target="_blank" rel="noopener noreferrer" className="ml-2 underline">
+              Open manually
+            </a> : null}
+          </span>;
+        },
         a: ({ children, href }) => (
           <a
             href={href}

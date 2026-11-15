@@ -1,5 +1,6 @@
 import type { ChatMessage } from "@/types/chat";
 import type { CanonicalMarkdownNote } from "@/types/notes";
+import { safeDatePrefix } from "@/lib/security/export-safety";
 
 const toSlug = (value: string) =>
   value
@@ -68,6 +69,6 @@ export function createNoteFromMessageSelection(messages: ChatMessage[], title = 
 }
 
 export function buildNoteFilename(note: CanonicalMarkdownNote): string {
-  const datePart = note.createdAt.slice(0, 10);
+  const datePart = safeDatePrefix(note.createdAt);
   return `${datePart}-${toSlug(note.title)}.md`;
 }
