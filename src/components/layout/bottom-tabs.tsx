@@ -5,7 +5,7 @@ import { Icon } from "@iconify/react";
 const tabs = [
   { key: "chat", label: "Chat", icon: "solar:chat-round-dots-bold" },
   { key: "signals", label: "Signals", icon: "solar:bolt-bold" },
-  { key: "agents", label: "Agents", icon: "solar:cpu-bolt-bold" },
+  { key: "agents", label: "AI Studio", icon: "solar:cpu-bolt-bold" },
   { key: "organizer", label: "Organizer", icon: "solar:checklist-minimalistic-bold" },
   { key: "settings", label: "Settings", icon: "solar:settings-bold" },
 ] as const;
