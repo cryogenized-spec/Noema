@@ -26,9 +26,9 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabKey>("chat");
 
   return (
-    <main className="mx-auto flex h-dvh w-full max-w-6xl flex-col gap-4 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-[calc(env(safe-area-inset-top)+1rem)] sm:px-6 lg:gap-6 lg:pt-8">
+    <main className="mx-auto flex h-dvh w-full min-w-0 max-w-6xl flex-col gap-4 overflow-x-clip px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-[calc(env(safe-area-inset-top)+1rem)] sm:px-6 lg:gap-6 lg:pt-8">
       <TopBar/>
-      <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[258px_minmax(0,1fr)]">
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[258px_minmax(0,1fr)] lg:gap-5">
         <aside className="noema-mesh hidden min-h-0 flex-col justify-between rounded-xl border border-noema-border bg-[#0d0d0f] p-5 lg:flex">
           <div className="space-y-6">
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-noema-muted">
@@ -54,15 +54,15 @@ export default function HomePage() {
             </Link>
           </div>
         </aside>
-        <section className="flex min-h-0 flex-col gap-3">
-          <div className="flex items-center justify-between gap-3">
+        <section className="flex min-h-0 min-w-0 flex-col gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-noema-muted">WORKSPACE / {activeTab.toUpperCase()}</p>
               <h2 className="mt-1 text-lg font-semibold tracking-tight text-white">{activeTab === "chat" ? "Conversations" : activeTab === "agents" ? "AI Studio" : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h2>
             </div>
             <span className="rounded-md border border-noema-border px-2.5 py-1.5 text-[10px] text-neutral-400">LOCAL FIRST</span>
           </div>
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 min-w-0 flex-1">
             {activeTab === "chat" ? <ChatScreen /> :
               activeTab === "agents" ? <AgentStudioScreen /> :
               activeTab === "organizer" ? <OrganizerScreen /> :
