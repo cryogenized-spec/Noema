@@ -374,7 +374,7 @@ export function AgentStudioScreen() {
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-noema-lime">Agent responsibilities</h3>
                 <p className="mt-2 text-xs leading-5 text-neutral-400">
-                  Adapted from RADIX's six colour pins. One agent owns each responsibility. An agent may hold several.
+                  Adapted from the six colour pins in Project RADIX. One agent owns each responsibility. An agent may hold several.
                   Assignments are saved locally; no incoming guest traffic or automation is currently activated.
                 </p>
               </div>
