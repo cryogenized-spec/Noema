@@ -27,6 +27,7 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
   const timerRef = useRef<number | null>(null);
   const mounted = useRef(false);
   const captureGeneration = useRef(0);
+  const transcriptionController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!hydrated) hydrate();
@@ -37,6 +38,8 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     return () => {
       mounted.current = false;
       ++captureGeneration.current;
+      transcriptionController.current?.abort();
+      transcriptionController.current = null;
       if (timerRef.current !== null) window.clearInterval(timerRef.current);
       try {
         if (mediaRecorderRef.current?.state === "recording")
@@ -116,17 +119,25 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     }
 
     setTranscribing(true);
+    const attempt = captureGeneration.current;
+    const controller = new AbortController();
+    transcriptionController.current = controller;
     try {
       const extension = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
       const file = new File([blob], `recording.${extension}`, { type: blob.type || "audio/webm" });
       const form = new FormData();
       form.set("provider", rememberLastProvider ? provider : "openai");
-      form.set("apiKey", await revealKey("openai"));
+      const apiKey = await revealKey("openai");
+      if (!mounted.current || captureGeneration.current !== attempt || controller.signal.aborted) return;
+      form.set("apiKey", apiKey);
       form.set("openaiModel", openaiModel);
       if (language) form.set("language", language);
       form.set("audio", file);
 
-      const response = await fetch("/api/stt/transcribe", { method: "POST", body: form });
+      const response = await fetch("/api/stt/transcribe", {
+        method: "POST", body: form, signal: controller.signal,
+      });
+      if (!mounted.current || controller.signal.aborted) return;
       const payload = (await response.json()) as { text?: string; error?: SttError };
 
       if (!response.ok || !payload.text) {
@@ -139,15 +150,17 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
         return;
       }
 
-      onTranscript(payload.text);
+      if (mounted.current) onTranscript(payload.text);
     } catch (error) {
+      if (!mounted.current || controller.signal.aborted) return;
       emitError({
         code: "PROVIDER_REQUEST_FAILED",
         message: "Transcription request failed.",
         detail: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setTranscribing(false);
+      if (transcriptionController.current === controller) transcriptionController.current = null;
+      if (mounted.current) setTranscribing(false);
     }
   };
 
