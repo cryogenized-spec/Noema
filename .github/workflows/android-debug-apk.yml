@@ -36,6 +36,9 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: android-actions/setup-android@v3
+        with:
+          # The old SDK 'tools' package is no longer available; do not use action defaults.
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
 
       - name: Install web dependencies from committed lockfile
         run: npm ci --no-audit --no-fund
