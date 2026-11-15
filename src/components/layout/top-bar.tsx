@@ -4,14 +4,20 @@ import { Icon } from "@iconify/react";
 
 interface TopBarProps {
   onMenuToggle: () => void;
-  menuOpen: boolean;
+  mobileMenuOpen: boolean;
+  desktopRailOpen: boolean;
 }
-export function TopBar({ onMenuToggle, menuOpen }: TopBarProps) {
+export function TopBar({ onMenuToggle, mobileMenuOpen, desktopRailOpen }: TopBarProps) {
   return (
     <header className="relative z-20 flex h-[64px] min-h-[64px] min-w-0 items-center gap-2 border-b border-noema-border bg-[#0b0b0d] px-3 sm:px-5">
       <button type="button" onClick={onMenuToggle}
-        aria-label="Toggle workspace navigation" aria-expanded={menuOpen}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-noema-border bg-[#151517] text-neutral-300 transition hover:border-noema-lime hover:text-noema-lime">
+        aria-label="Toggle mobile navigation" aria-expanded={mobileMenuOpen}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-noema-border bg-[#151517] text-neutral-300 transition hover:border-noema-lime hover:text-noema-lime lg:hidden">
+        <Icon icon="solar:hamburger-menu-linear" className="text-xl" aria-hidden="true" />
+      </button>
+      <button type="button" onClick={onMenuToggle}
+        aria-label="Toggle desktop navigation" aria-expanded={desktopRailOpen}
+        className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-noema-border bg-[#151517] text-neutral-300 transition hover:border-noema-lime hover:text-noema-lime lg:flex">
         <Icon icon="solar:hamburger-menu-linear" className="text-xl" aria-hidden="true" />
       </button>
       <Link href="/" className="flex min-w-0 flex-1 items-center" aria-label="NOEMA home">
