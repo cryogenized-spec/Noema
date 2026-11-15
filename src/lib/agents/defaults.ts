@@ -49,6 +49,8 @@ export function createDefaultAgentProfile(): AgentProfile {
     description: "",
     avatarImage: "",
     avatarShape: "circle",
+    roleAssignments: [],
+    guestVisibility: "private",
     accentColor: "#8B5CF6",
     fontFamily: "inter",
     fontColor: "#F8FAFC",
