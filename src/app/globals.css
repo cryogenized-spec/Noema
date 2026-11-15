@@ -45,10 +45,14 @@ body {
   outline-offset: 3px;
 }
 
-.font-agent-inter, .font-agent-manrope, .font-agent-ibm, .font-agent-space,
-.font-agent-merriweather, .font-agent-jetbrains-mono {
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+/* Local-first font stacks: use installed faces where possible; never fetch remote
+   fonts during app startup. The preview and transcript share these exact rules. */
+.font-agent-inter { font-family: "Inter", ui-sans-serif, system-ui, sans-serif; }
+.font-agent-manrope { font-family: "Manrope", "Trebuchet MS", ui-sans-serif, sans-serif; }
+.font-agent-ibm { font-family: "IBM Plex Sans", "Arial", ui-sans-serif, sans-serif; }
+.font-agent-space { font-family: "Space Grotesk", "Trebuchet MS", ui-sans-serif, sans-serif; }
+.font-agent-merriweather { font-family: "Merriweather", Georgia, "Times New Roman", serif; }
+.font-agent-jetbrains-mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", ui-monospace, monospace; }
 
 .hljs { background: transparent !important; }
 
