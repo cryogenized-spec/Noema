@@ -30,6 +30,8 @@ export function WorkshopProfileScreen() {
   const [linkLabel, setLinkLabel] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [notice, setNotice] = useState("");
+  const [disciplinesText, setDisciplinesText] = useState("");
+  const [toolsText, setToolsText] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -37,7 +39,7 @@ export function WorkshopProfileScreen() {
       .then((stored) => {
         if (!mounted) return;
         const initial = stored ? { ...NEW_WORKSHOP_PROFILE, ...stored } : { ...NEW_WORKSHOP_PROFILE };
-        setProfile(initial); setSaved(initial); setReady(true);
+        setProfile(initial); setSaved(initial); setDisciplinesText(initial.disciplines.join(", ")); setToolsText(initial.tools.join(", ")); setReady(true);
       })
       .catch(() => { if (mounted) { setNotice("Local storage is unavailable; changes cannot be saved."); setReady(true); } });
     return () => { mounted = false; };
@@ -46,7 +48,7 @@ export function WorkshopProfileScreen() {
   const patch = (change: Partial<WorkshopProfile>) => setProfile((current) => ({ ...current, ...change }));
   const save = async () => {
     try {
-      const next = { ...profile, alias: profile.alias.trim().slice(0, 50),
+      const next = { ...profile, disciplines: splitTags(disciplinesText), tools: splitTags(toolsText), alias: profile.alias.trim().slice(0, 50),
         handle: profile.handle.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 30),
         updatedAt: new Date().toISOString() };
       await db.profiles.put(next);
@@ -94,11 +96,11 @@ export function WorkshopProfileScreen() {
           {editing ? (
             <>
               <button type="button" className="rounded-lg border border-noema-border px-4 py-2 text-xs text-neutral-300"
-                onClick={() => { setProfile(saved); setEditing(false); setNotice(""); }}>Cancel</button>
+                onClick={() => { setProfile(saved); setDisciplinesText(saved.disciplines.join(", ")); setToolsText(saved.tools.join(", ")); setEditing(false); setNotice(""); }}>Cancel</button>
               <button type="button" className="rounded-lg bg-noema-lime px-4 py-2 text-xs font-semibold text-black"
                 onClick={() => void save()}>Save profile</button>
             </>
-          ) : <button type="button" onClick={() => setEditing(true)}
+          ) : <button type="button" onClick={() => { setDisciplinesText(profile.disciplines.join(", ")); setToolsText(profile.tools.join(", ")); setEditing(true); }}
               className="rounded-lg border border-noema-border px-4 py-2 text-xs text-white hover:border-noema-lime">
               <Icon icon="solar:pen-bold" className="mr-1 inline" aria-hidden="true" /> Edit profile
             </button>}
@@ -154,8 +156,8 @@ export function WorkshopProfileScreen() {
               <label className="block text-xs text-neutral-400">Tagline<input className={`${field} mt-1`} maxLength={120} value={profile.tagline} onChange={(e) => patch({ tagline: e.target.value })}/></label>
               <label className="block text-xs text-neutral-400">About your work<textarea className={`${field} mt-1`} rows={4} maxLength={1200} value={profile.about} onChange={(e) => patch({ about: e.target.value })}/></label>
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-neutral-400">Disciplines (comma-separated)<input className={`${field} mt-1`} value={profile.disciplines.join(", ")} onChange={(e) => patch({ disciplines: splitTags(e.target.value) })}/></label>
-                <label className="text-xs text-neutral-400">Tools & technologies<input className={`${field} mt-1`} value={profile.tools.join(", ")} onChange={(e) => patch({ tools: splitTags(e.target.value) })}/></label>
+                <label className="text-xs text-neutral-400">Disciplines (comma-separated)<input className={`${field} mt-1`} value={disciplinesText} onChange={(e) => setDisciplinesText(e.target.value)}/></label>
+                <label className="text-xs text-neutral-400">Tools & technologies<input className={`${field} mt-1`} value={toolsText} onChange={(e) => setToolsText(e.target.value)}/></label>
               </div>
             </section>
           )}
