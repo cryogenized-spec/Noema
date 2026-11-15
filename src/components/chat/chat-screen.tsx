@@ -369,6 +369,12 @@ export function ChatScreen() {
       const trimmed = draft.trim();
       if (!trimmed) return;
       if (editingMessageId !== null) {
+        // A stale editing target from a previous thread may never be modified here.
+        if (!messages.some((message) => message.id === editingMessageId &&
+            message.threadKey === activeThreadKey)) {
+          setEditingMessageId(null);
+          return;
+        }
         await updateMessage(editingMessageId, trimmed);
         setEditingMessageId(null);
         setDraft("");
@@ -645,7 +651,7 @@ export function ChatScreen() {
             }}
           />
 
-          <VoiceCaptureButton
+          <VoiceCaptureButton key={activeThreadKey}
             compact
             onTranscript={(text) => setDraft((current) => `${current} ${text}`.trim())}
             onError={(error) => {
