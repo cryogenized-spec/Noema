@@ -8,6 +8,9 @@ on:
       - "src/types/contact.ts"
       - "src/app/connect/**"
       - "src/app/invite/**"
+      - "src/app/share/**"
+      - "src/lib/db/client.ts"
+      - "tests/contact-encryption.test.mjs"
       - ".github/workflows/contact-relay.yml"
   push:
     branches:
