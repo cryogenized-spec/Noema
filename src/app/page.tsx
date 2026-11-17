@@ -12,7 +12,7 @@ import { AgentStudioScreen } from "@/components/agents/agent-studio-screen";
 import { OrganizerScreen } from "@/components/organizer/organizer-screen";
 import { SignalsScreen } from "@/components/signals/signals-screen";
 
-const placeholders: Record<Exclude<TabKey, "chat" | "agents" | "organizer">, { title: string; description: string }> = {
+const placeholders: Record<Exclude<TabKey, "chat" | "agents" | "organizer" | "signals">, { title: string; description: string }> = {
   settings: {
     title: "Settings",
     description: "Privacy, sync and preference controls are queued for later iterations.",
