@@ -246,15 +246,14 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     if(!session || !active || !draft.trim())return;
     const text=draft.trim();
     const existing=pendingSend.current;
-    const attempt=existing?.threadId===active.id && existing.text===text ? existing : {
-      threadId:active.id,text,id:clientId(),
-      ciphertext:await encryptContactMessage(active.keyId,active.id,clientId(),text),
-    };
-    // AAD and id MUST match: re-encrypt with the committed attempt's ID.
-    const ciphertext=existing?.threadId===active.id && existing.text===text
-      ? existing.ciphertext : await encryptContactMessage(active.keyId,active.id,attempt.id,text);
-    pendingSend.current={threadId:active.id,text,id:attempt.id,ciphertext};
-    await relayPostMessage(session,active.id,ciphertext,attempt.id);
+    const attempt=existing?.threadId===active.id && existing.text===text ? existing : null;
+    const id=attempt?.id || clientId();
+    // One ciphertext is generated once and reused for uncertain network retries:
+    // idempotency and AES-GCM authenticated data must refer to the SAME client ID.
+    const ciphertext=attempt?.ciphertext ||
+      await encryptContactMessage(active.keyId,active.id,id,text);
+    pendingSend.current={threadId:active.id,text,id,ciphertext};
+    await relayPostMessage(session,active.id,ciphertext,id);
     pendingSend.current=null;setDraft("");
     await loadMessages(session,active);
     setNote("Encrypted message delivered to the relay.");
