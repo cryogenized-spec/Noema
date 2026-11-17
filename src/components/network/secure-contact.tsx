@@ -40,6 +40,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [policy,setPolicy]=useState<ReceptionPolicy|null>(null);
   const [threads,setThreads]=useState<RelayThread[]>([]);
   const [lastChecked,setLastChecked]=useState("");
+  const [ownerSection,setOwnerSection]=useState<"inbox"|"invites"|"reception">("inbox");
   const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
@@ -286,7 +287,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     await relayPostMessage(session,active.id,ciphertext,id);
     pendingSend.current=null;setDraft("");
     await loadMessages(session,active);
-    setNote("Encrypted message delivered to the relay.");
+    setNote("Encrypted message stored on the relay. The recipient can see it in their Contact inbox.");
   });
   const switchGlobal=()=>action(async()=>{
     if(!session || !isOwner || !policy)return;
@@ -370,7 +371,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </button>
     </div>}
     {note&&<p role="status" className="shrink-0 rounded-lg border border-noema-lime/30 p-2 text-xs text-noema-lime">{note}</p>}
-    {inviteToken&&!joined ? <section className="space-y-3 rounded-xl border border-noema-border bg-[#111113] p-4">
+    {inviteToken&&!joined ? <section className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-xl border border-noema-border bg-[#111113] p-4">
       <h1 className="text-lg font-semibold">Accept private invitation</h1>
       <p className="text-xs text-neutral-400">Only pressing Continue redeems this invitation. Opening or previewing the link never wakes an agent.</p>
       {!inviteSecret&&<p className="text-xs text-rose-300">The encryption key is missing from the link. Do not redeem this invitation.</p>}
@@ -380,7 +381,18 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       <button type="button" className={primary+" w-full"} disabled={!session||!inviteSecret||busy}
         onClick={()=>void redeem()}>Continue anonymously</button>
     </section> : <>
-      {isOwner&&<section className="shrink-0 space-y-2 rounded-xl border border-noema-border bg-[#111113] p-3">
+      {isOwner&&<nav className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1"
+          aria-label="Encrypted contact sections">
+        {(["inbox","invites","reception"] as const).map(section=><button
+          key={section} type="button" aria-current={ownerSection===section?"page":undefined}
+          className={"min-h-10 rounded-md px-2 text-xs font-semibold "+
+            (ownerSection===section?"bg-noema-lime text-black":"text-neutral-400 hover:bg-white/[0.06] hover:text-white")}
+          onClick={()=>setOwnerSection(section)}>
+          {section==="inbox"?"Inbox":section==="invites"?"Invites":"Reception"}
+          {section==="inbox"&&newThreadIds.length>0?" · "+newThreadIds.length:""}
+        </button>)}
+      </nav>}
+      {isOwner&&ownerSection==="reception"&&<section className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-noema-border bg-[#111113] p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold">Reception · {receptionist?.name||"No red agent assigned"}</span>
           <button type="button" disabled={!session||!policy||busy}
@@ -404,7 +416,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
           </label>
         </div>}
       </section>}
-      {isOwner&&<section className="shrink-0 space-y-2 rounded-lg border border-noema-border p-3">
+      {isOwner&&ownerSection==="invites"&&<section className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-lg border border-noema-border p-3">
         <div className="flex gap-2">
           <input className={field} maxLength={32} placeholder="Inviter alias" value={alias} onChange={e=>setAlias(e.target.value)} />
           <button type="button" className={primary+" shrink-0"} disabled={busy||!session}
@@ -435,7 +447,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
           </div>
         </div>}
       </section>}
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+      {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
         <div className="flex shrink-0 items-center justify-between gap-2 px-1">
           <div className="min-w-0">
             <h2 className="text-xs font-semibold text-white">
@@ -448,11 +460,16 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               {lastChecked ? "Last checked "+lastChecked : "Checking the encrypted relay…"}
             </p>
           </div>
-          <button type="button" disabled={!session} onClick={()=>{if(session)void receive(session);}}
-            className={button+" shrink-0"} aria-label="Refresh encrypted contacts">
-            <Icon icon="solar:refresh-linear" className="mr-1 inline" aria-hidden="true" />
-            Refresh
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {isOwner&&<button type="button" className={primary} onClick={()=>setOwnerSection("invites")}>
+              New invite
+            </button>}
+            <button type="button" disabled={!session} onClick={()=>{if(session)void receive(session);}}
+              className={button} aria-label="Refresh encrypted contacts">
+              <Icon icon="solar:refresh-linear" className="mr-1 inline" aria-hidden="true" />
+              Refresh
+            </button>
+          </div>
         </div>
         {isOwner && <p className="shrink-0 px-1 text-[11px] leading-4 text-neutral-400">
           New guest messages appear here in Contact inbox, not the separate local AI Chat.
@@ -504,9 +521,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               onClick={()=>void send()}>Send</button>
           </div>
         </section>:<p className="p-5 text-center text-xs text-neutral-500">
-          {isOwner?"No guests yet. Use New invite above, and ask the guest to choose Continue anonymously and send a message.":"No conversations yet."}
+          {isOwner?"No guest contacts yet. Choose New invite, then ask your guest to press Continue anonymously and send a message.":"No conversations yet."}
         </p>}
-      </div>
+      </div>}
       {isOwner&&deviceId&&<p className="shrink-0 break-all text-[10px] text-neutral-600">
         Owner device ID for Cloudflare OWNER_DEVICE_ID setup: {deviceId}
       </p>}
