@@ -1,17 +1,17 @@
 ## Private staging resources — 17 November 2026
 
-**Provisioned, intentionally owner-locked:**
+**Provisioned, owner-bound private staging:**
 - Staging PWA: `https://noema-contact-staging.vercel.app/connect`, Vercel project `noema`, linked to branch `feature/noema-e2ee-contact-reception`. Vercel Authentication is enforced for **all** NOEMA deployments, including custom domains. This is a private QA URL, not an anonymous public guest launch.
 - Separate Cloudflare Worker: `noema-contact-relay-staging` at `https://noema-contact-relay-staging.cryogenized.workers.dev`. Live same-script SQLite Durable Object namespace is `noema-contact-relay-staging_NoemaRelayRoom`, bound as `NOEMA_ROOM`.
-- Worker `APP_ORIGIN` is exactly `https://noema-contact-staging.vercel.app`; `OWNER_DEVICE_ID` is **empty**. The Worker rejects all message and auth requests with HTTP 503 *before* allocating Durable Object activity while not owner-bound. No invitation can be issued, and AI Reception remains off.
+- Worker `APP_ORIGIN` is exactly `https://noema-contact-staging.vercel.app`; `OWNER_DEVICE_ID` is now bound to the user-supplied P-256 device fingerprint (ending `lHYUwY`). The full device fingerprint is held in the Cloudflare runtime binding, not committed in source. Anonymous requests must return HTTP 401, untrusted origins HTTP 403, and only the registered owner may issue invitations. AI Reception remains off.
 - The Vercel Preview environment variable `NEXT_PUBLIC_NOEMA_RELAY_URL` is scoped only to the messaging feature branch. Production is not connected to this Worker.
 - A new deployment is needed after changing the Vercel preview environment variable; do not assume previously built Next.js `NEXT_PUBLIC_*` bundles will pick up a later change.
 
-**Next owner action:** open the protected stable staging /connect URL in the browser that will own NOEMA, copy the displayed public **device identifier**, and supply it for `OWNER_DEVICE_ID` registration. Avoid clearing IndexedDB, switching origins or using private/incognito browsing afterward. The ID is not a secret or password. We will update the Worker to accept this exact owner device, keep AI Reception disabled, and test guest exchange under controlled access. Do not turn off Vercel Authentication or publicly expose guest invitation browsing without explicit security review.
+**Next owner action:** return to the protected stable staging `/connect` URL in the same browser that supplied the fingerprint (ending `lHYUwY`) and verify it says **Owner** after signing in. Do not clear IndexedDB, change origins, or switch to a private/incognito browser; the signing key remains on the originating device. Test creating a single-use invitation and manually sharing it with a second Vercel-authorised browser. Keep global and per-thread AI Reception disabled. Do not turn off Vercel Authentication or publicly expose guest invitation browsing without explicit security review.
 
 # NOEMA encrypted contact bridge — staging
 
-This branch replaces the older plaintext RADIX/NOEMA Cloudflare relay pilot. It is a **self-hosted Cloudflare Worker + SQLite Durable Object**, not deployed automatically. UI route: `/connect` for the owner and `/invite/[token]` for a guest. Existing `/invite/demo` remains inert.
+This branch replaces the older plaintext RADIX/NOEMA Cloudflare relay pilot. It is a **self-hosted Cloudflare Worker + SQLite Durable Object**, deployed only to private Cloudflare staging; there is no production/public rollout. UI route: `/connect` for the owner and `/invite/[token]` for a guest. Existing `/invite/demo` remains inert.
 
 ## Security design
 - A browser generates a signed P-256 non-extractable device identity in IndexedDB; Cloudflare issues a 24-hour scoped bearer session after verifying a one-time signed challenge.
