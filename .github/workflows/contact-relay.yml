@@ -43,12 +43,20 @@ jobs:
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Staging lock smoke check (until owner registration)
+      - name: Staging registered-owner security smoke check
         run: |
           set -eu
-          url='https://noema-contact-relay-staging.cryogenized.workers.dev/v1/identity'
-          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-locked.json -w '%{http_code}' \
-            -H 'Origin: https://noema-contact-staging.vercel.app' "$url")
-          test "$status" = "503"
-          grep -q 'Private messaging is not activated' /tmp/noema-locked.json
-          echo "Cloudflare staging correctly rejects unauthenticated traffic before owner registration."
+          base='https://noema-contact-relay-staging.cryogenized.workers.dev'
+          good='https://noema-contact-staging.vercel.app'
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-unauth.json -w '%{http_code}' \
+            -H "Origin: $good" "$base/v1/identity")
+          test "$status" = "401"
+          grep -q 'Authenticated device session required' /tmp/noema-unauth.json
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-wrong-origin.txt -w '%{http_code}' \
+            -H 'Origin: https://untrusted.example' "$base/v1/identity")
+          test "$status" = "403"
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-invite.json -w '%{http_code}' \
+            -X POST -H "Origin: $good" -H 'Content-Type: application/json' \
+            --data '{"keyId":"not-an-invite-id"}' "$base/v1/invites")
+          test "$status" = "401"
+          echo "Authenticated staging: anonymous calls blocked; untrusted origins refused."
