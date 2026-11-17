@@ -20,11 +20,23 @@ async function fetchOne(url: URL): Promise<{ xml: string; redirect?: string }> {
     const req = httpsRequest(url, {
       method: "GET",
       agent: false,
-      // Node 20+ may ask lookup() for an address ARRAY when automatic family
-      // selection is enabled. Only IPv4 was validated, so disable that mode
-      // and preserve a single, already-vetted pinned destination.
-      autoSelectFamily: false,
-      lookup: (_host, _options, callback) => callback(null, pinned, 4),
+      // Pin IPv4 family to disable Node's optional multi-family auto-selection.
+      // Some Node versions otherwise request an array of address records.
+      family: 4,
+      lookup: (_host, options, callback) => {
+        if (typeof options === "object" && options.all) {
+          const done = callback as unknown as (
+            error: NodeJS.ErrnoException | null,
+            addresses: Array<{ address: string; family: number }>,
+          ) => void;
+          done(null, [{ address: pinned, family: 4 }]);
+        } else {
+          const done = callback as unknown as (
+            error: NodeJS.ErrnoException | null, address: string, family: number,
+          ) => void;
+          done(null, pinned, 4);
+        }
+      },
       timeout: REQUEST_TIMEOUT_MS,
       headers: {
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.1",
