@@ -157,3 +157,31 @@ test("invalid budgets rejected and no relay endpoint can call OpenAI",async()=>{
   assert.equal((await call(room,"/v1/threads/"+id+"/agent-response",
     {apiKey:"DO_NOT_ACCEPT",seq:1},owner.token)).status,404);
 });
+
+
+test("new guest contacts and their encrypted messages are visible to the owner",async()=>{
+  const {room,owner,guest,id,thread}=await threadSetup();
+  const inbox=await call(room,"/v1/threads",{},owner.token,"GET");
+  assert.equal(inbox.status,200);
+  assert.equal(inbox.body.threads.length,1);
+  assert.equal(inbox.body.threads[0].id,id);
+  assert.equal(inbox.body.threads[0].guestAlias,"Visitor");
+  assert.equal(inbox.body.threads[0].owner,owner.deviceId);
+  assert.equal(inbox.body.threads[0].receptionEnabled,false);
+  const guestRoster=await call(room,"/v1/threads",{},guest.token,"GET");
+  assert.equal(guestRoster.body.threads[0].id,id);
+  const messageId="guest-contact-message-00001";
+  const delivered=await call(room,"/v1/threads/"+id+"/messages",
+    {content:ENCRYPTED,clientMessageId:messageId},guest.token);
+  assert.equal(delivered.status,201);
+  assert.equal(delivered.body.message.sender,"guest");
+  const ownerMessages=await call(room,"/v1/threads/"+id+"/messages?after=0",
+    {},owner.token,"GET");
+  assert.equal(ownerMessages.status,200);
+  assert.equal(ownerMessages.body.messages.length,1);
+  assert.equal(ownerMessages.body.messages[0].content,ENCRYPTED);
+  assert.equal(ownerMessages.body.messages[0].clientMessageId,messageId);
+  const updatedInbox=await call(room,"/v1/threads",{},owner.token,"GET");
+  assert.equal(updatedInbox.body.threads[0].nextSeq,1);
+  assert.ok(Date.parse(updatedInbox.body.threads[0].updatedAt)>0);
+});
