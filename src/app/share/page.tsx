@@ -7,6 +7,7 @@ import { Icon } from "@iconify/react";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
 import { AGENT_ROLE_DEFINITIONS, normalizeAgentRoles } from "@/lib/agents/role-routing";
 import { useAgentStore } from "@/store/agent-store";
+import { relayAvailable } from "@/lib/network/relay-client";
 
 const defaultMessage = "Here's NOEMA's anonymous chat demonstration. Live invitations and AI replies are still being built.";
 
@@ -63,6 +64,21 @@ export default function ContactBridgePage() {
             This is a contact-sharing prototype. The link and QR below open the anonymous guest-chat demonstration only.
             They do not invite a real contact, notify you, deliver messages or activate an AI agent. Protected previews may also require Vercel login.
           </p>
+        </section>
+
+        <section className="space-y-3 rounded-xl border border-noema-lime/30 bg-[#101712] p-4">
+          <h2 className="text-sm font-semibold text-noema-lime">Encrypted contact bridge · new</h2>
+          <p className="text-xs leading-5 text-neutral-300">
+            The real contact interface now supports signed device identity, one-use invitations,
+            encrypted guest messages, and separately approved Reception agent replies with daily limits.
+            It must be connected to your Cloudflare Worker and configured owner device first.
+          </p>
+          <Link href="/connect" className="flex min-h-11 items-center justify-center rounded-lg bg-noema-lime px-3 text-sm font-semibold text-black">
+            {relayAvailable ? "Open encrypted contact inbox" : "Open encrypted contact setup"}
+          </Link>
+          {!relayAvailable && <p className="text-[11px] text-noema-gold">
+            Cloudflare relay is not configured on this preview. The QR below still opens the harmless demo.
+          </p>}
         </section>
 
         <section className="space-y-4 rounded-xl border border-noema-border bg-[#111113] p-4">
