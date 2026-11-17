@@ -151,8 +151,10 @@ export default function ContactBridgePage() {
             </div>)}
           </div>
           <p className="text-xs leading-5 text-neutral-400">
-            Eventually the Cloudflare contact bridge can route a guest message to the red reception agent,
-            but only when authenticated messaging, owner consent, billing limits and per-conversation permissions exist.
+            The encrypted contact bridge is now implemented in the separate Contact inbox,
+            with signed device authentication, owner-only invitations, usage ceilings and per-conversation
+            AI consent. It remains inactive until an approved Cloudflare Worker and stable owner identity
+            are configured and tested. The demo QR above never sends messages.
           </p>
         </section>
       </div>
