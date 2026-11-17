@@ -277,7 +277,9 @@ export class NoemaRelayRoom {
     }
     if (req.method==="POST"&&action==="messages") {
       const input=await body(req);
-      const content=messageText(input.content);
+      let content;
+      try { content=messageText(input.content); }
+      catch { return fail(400,"Only bounded encrypted message envelopes are accepted."); }
       if (!validId(input.clientMessageId)) return fail(400,"Unique message ID required.");
       const asAgent=input.asAgent===true;
       if (asAgent && (!this.owner(session)||session.deviceId!==thread.owner))
