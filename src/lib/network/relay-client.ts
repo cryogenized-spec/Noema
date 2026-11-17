@@ -59,15 +59,25 @@ export async function relayFetch<T>(path: string, options: {
   }
   return result as T;
 }
+/** Read a previously authenticated session without issuing network requests
+ * or signing a challenge. Safe for lightweight UI indicators and foreground polls.
+ */
+export function readCachedRelaySession(): RelaySession | null {
+  try {
+    if (typeof sessionStorage === "undefined") return null;
+    const stored = sessionStorage.getItem(SESSION_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as RelaySession;
+    if (typeof parsed?.token !== "string" || typeof parsed?.deviceId !== "string" ||
+        !/^[A-Za-z0-9_-]{40,90}$/.test(parsed.token) ||
+        new Date(parsed.expiresAt).getTime() - Date.now() <= 60000) return null;
+    return parsed;
+  } catch { return null; }
+}
 export async function ensureRelaySession(force = false): Promise<RelaySession> {
   if (!force) {
-    try {
-      const stored = sessionStorage.getItem(SESSION_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as RelaySession;
-        if (parsed?.token && new Date(parsed.expiresAt).getTime() - Date.now() > 60000) return parsed;
-      }
-    } catch { /* Reauthenticate if browser storage is unavailable. */ }
+    const saved = readCachedRelaySession();
+    if (saved) return saved;
   }
   const identity = await getOrCreateDeviceIdentity();
   const step1 = await relayFetch<{ challenge:string }>("/v1/auth/challenge", {
