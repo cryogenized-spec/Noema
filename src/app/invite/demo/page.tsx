@@ -57,7 +57,7 @@ export default function InviteDemoPage() {
       </span>
       <h1 className="text-xl font-semibold">This QR cannot deliver messages</h1>
       <p className="text-sm leading-6 text-neutral-300">
-        You opened NOEMA's older invitation demonstration. It does not create a contact
+        You opened an older NOEMA invitation demonstration. It does not create a contact
         or send anything to the owner. For genuine encrypted messaging, ask the owner
         for a fresh private QR generated using <strong>New invite</strong> in the Contact inbox.
       </p>
