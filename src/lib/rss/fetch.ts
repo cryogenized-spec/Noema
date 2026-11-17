@@ -20,6 +20,10 @@ async function fetchOne(url: URL): Promise<{ xml: string; redirect?: string }> {
     const req = httpsRequest(url, {
       method: "GET",
       agent: false,
+      // Node 20+ may ask lookup() for an address ARRAY when automatic family
+      // selection is enabled. Only IPv4 was validated, so disable that mode
+      // and preserve a single, already-vetted pinned destination.
+      autoSelectFamily: false,
       lookup: (_host, _options, callback) => callback(null, pinned, 4),
       timeout: REQUEST_TIMEOUT_MS,
       headers: {
