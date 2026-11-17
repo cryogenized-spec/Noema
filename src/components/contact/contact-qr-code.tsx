@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 /** QR generation runs on the device; no URL or identity leaves the browser.
  * The substantial encoder is lazy-loaded only when this UI is visible.
  */
-export function ContactQrCode({ value }: { value: string }) {
+export function ContactQrCode({ value, label = "NOEMA link QR code" }: { value: string; label?: string }) {
   const [svg, setSvg] = useState<{ path: string; size: number } | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -27,10 +27,10 @@ export function ContactQrCode({ value }: { value: string }) {
     return () => { active = false; };
   }, [value]);
   return (
-    <div className="mx-auto flex h-[210px] w-[210px] max-w-full items-center justify-center rounded-lg bg-white p-2" aria-label="QR code to the NOEMA demo">
+    <div className="mx-auto flex h-[210px] w-[210px] max-w-full items-center justify-center rounded-lg bg-white p-2" aria-label={label}>
       {svg ? (
         <svg viewBox={`0 0 ${svg.size} ${svg.size}`} className="h-full w-full" role="img"
-          aria-label="Scannable QR code for this NOEMA invitation demonstration">
+          aria-label={label}>
           <rect width={svg.size} height={svg.size} fill="#ffffff" />
           <path d={svg.path} fill="#111111" />
         </svg>
