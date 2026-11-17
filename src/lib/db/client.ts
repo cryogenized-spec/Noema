@@ -7,6 +7,7 @@ import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { TaskRecord } from "@/types/tasks";
 import type { CalendarEventRecord } from "@/types/calendar";
 import type { WorkshopProfile } from "@/types/profile";
+import type { RssArticle, RssFolder, RssSubscription } from "@/types/rss";
 
 class NoemaDatabase extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
@@ -17,6 +18,9 @@ class NoemaDatabase extends Dexie {
   tasks!: EntityTable<TaskRecord, "id">;
   calendarEvents!: EntityTable<CalendarEventRecord, "id">;
   profiles!: EntityTable<WorkshopProfile, "id">;
+  rssSubscriptions!: EntityTable<RssSubscription, "id">;
+  rssFolders!: EntityTable<RssFolder, "id">;
+  rssArticles!: EntityTable<RssArticle, "id">;
 
   constructor() {
     super("noema-db");
@@ -128,6 +132,13 @@ class NoemaDatabase extends Dexie {
 
     // Preserves existing tables while introducing the singleton local workshop profile.
     this.version(10).stores({ profiles: "id, updatedAt" });
+
+    // RADIX-inspired RSS subscriptions and bounded offline article cache.
+    this.version(11).stores({
+      rssSubscriptions: "id, &url, folderId, updatedAt, lastFetchedAt",
+      rssFolders: "id, name",
+      rssArticles: "id, subscriptionId, publishedAt, read, starred, fetchedAt",
+    });
   }
 }
 
