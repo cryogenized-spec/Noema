@@ -60,3 +60,5 @@ jobs:
             --data '{"keyId":"not-an-invite-id"}' "$base/v1/invites")
           test "$status" = "401"
           echo "Authenticated staging: anonymous calls blocked; untrusted origins refused."
+      - name: Signed guest authentication smoke test (no real messages)
+        run: node relay/smoke-staging.mjs
