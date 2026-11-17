@@ -349,6 +349,8 @@ export default {
     if(!["GET","POST"].includes(req.method))return decorate(fail(405,"Unsupported method."));
     try{
       if(!new URL(req.url).pathname.startsWith("/v1/"))return decorate(fail(404,"Unknown API route."));
+      // No Durable Object is instantiated while staging has no registered owner.
+      if(!env.OWNER_DEVICE_ID)return decorate(fail(503,"Private messaging is not activated."));
       const instance=env.NOEMA_ROOM.idFromName("noema-e2ee-pilot-v1");
       return decorate(await env.NOEMA_ROOM.get(instance).fetch(req));
     }catch{
