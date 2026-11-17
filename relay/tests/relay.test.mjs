@@ -38,7 +38,7 @@ async function identity(room){
   return {deviceId,token:verified.body.token,proof,signature:b64url(new Uint8Array(sig))};
 }
 async function setup(){
-  const env={OWNER_DEVICE_ID:""};
+  const env={OWNER_DEVICE_ID:"test-owner-registration-initialized"};
   const store=storage(),room=new NoemaRelayRoom({storage:store},env);
   const owner=await identity(room);
   env.OWNER_DEVICE_ID=owner.deviceId;
@@ -60,7 +60,7 @@ test("owner is explicitly allowlisted, no self-service guest invitations",async(
   const {room,guest,owner,env}=await setup();
   assert.equal((await call(room,"/v1/invites",{keyId:"key-reference-123456"},guest.token)).status,403);
   env.OWNER_DEVICE_ID="";
-  assert.equal((await call(room,"/v1/invites",{keyId:"key-reference-123456"},owner.token)).status,403);
+  assert.equal((await call(room,"/v1/invites",{keyId:"key-reference-123456"},owner.token)).status,503);
   env.OWNER_DEVICE_ID=owner.deviceId;
   const denied=await call(room,"/v1/invites",{keyId:"key-reference-123456",secret:"sensitive"},owner.token);
   assert.equal(denied.status,400);
