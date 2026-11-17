@@ -42,3 +42,14 @@ jobs:
         run: npm run build
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
+
+      - name: One-time staging lock smoke check
+        if: contains(github.event.head_commit.message, '[smoke-staging-lock]')
+        run: |
+          set -eu
+          url='https://noema-contact-relay-staging.cryogenized.workers.dev/v1/identity'
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-locked.json -w '%{http_code}' \
+            -H 'Origin: https://noema-contact-staging.vercel.app' "$url")
+          test "$status" = "503"
+          grep -q 'Private messaging is not activated' /tmp/noema-locked.json
+          echo "Cloudflare staging correctly rejects unauthenticated traffic before owner registration."
