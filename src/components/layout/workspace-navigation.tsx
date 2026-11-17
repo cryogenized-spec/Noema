@@ -30,11 +30,11 @@ export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, deskto
   }, [mobileOpen, onClose]);
 
   const invitationEntry = (compact: boolean) => (
-    <Link href="/share" title="Contact & QR preview" aria-label={compact ? "Contact & QR" : undefined}
+    <Link href="/connect" title="Encrypted contacts and invitations" aria-label={compact ? "Contacts" : undefined}
       onClick={onClose}
       className={`flex min-h-11 items-center rounded-xl text-noema-gold transition hover:bg-white/[0.04] ${compact ? "w-12 justify-center" : "w-full gap-3 px-3"}`}>
       <Icon icon="solar:link-round-linear" className="text-xl" aria-hidden="true" />
-      {!compact && <span className="text-sm">Contact & QR</span>}
+      {!compact && <span className="text-sm">Contacts / Inbox</span>}
     </Link>
   );
   const renderDestinations = (compact: boolean) => destinations.map((destination) => {
