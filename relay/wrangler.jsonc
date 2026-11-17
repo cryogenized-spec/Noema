@@ -1,0 +1,10 @@
+{
+  "name": "noema-relay",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-01",
+  "durable_objects": {
+    "bindings": [{ "name": "NOEMA_ROOM", "class_name": "NoemaRelayRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NoemaRelayRoom"] }],
+  "vars": { "APP_ORIGIN": "http://localhost:3000", "OWNER_DEVICE_ID": "" }
+}
