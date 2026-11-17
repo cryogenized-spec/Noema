@@ -1,0 +1,28 @@
+name: NOEMA secure contact relay
+on:
+  pull_request:
+    paths:
+      - "relay/**"
+      - "src/lib/network/**"
+      - "src/components/network/**"
+      - "src/types/contact.ts"
+      - "src/app/connect/**"
+      - "src/app/invite/**"
+      - ".github/workflows/contact-relay.yml"
+  push:
+    branches:
+      - feature/noema-e2ee-contact-reception
+permissions:
+  contents: read
+jobs:
+  relay-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test relay/tests/*.test.mjs
+      - run: |
+          ! grep -r -n "api.openai.com\|Bearer.*apiKey" relay/src
+          echo "Relay contains no model provider calls or API-key forwarding."
