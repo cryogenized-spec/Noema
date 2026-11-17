@@ -332,6 +332,18 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       Invite-key AES-GCM encryption · 5-second visible-tab polling · no server-side model calls · not independently audited
     </p>
     {error&&<p role="alert" className="shrink-0 rounded-lg border border-rose-600/30 bg-rose-950/20 p-2 text-xs text-rose-200">{error}</p>}
+    {!session&&deviceId&&<div className="shrink-0 rounded-lg border border-noema-lime/20 bg-[#101612] p-3">
+      <p className="text-xs font-semibold text-noema-lime">Owner device registration</p>
+      <p className="mt-1 text-[11px] leading-5 text-neutral-400">
+        The relay is locked until the owner registers this staging browser identity.
+        The ID below is public device identity metadata, not a private key.
+      </p>
+      <p className="mt-2 break-all font-mono text-[11px] text-neutral-200">{deviceId}</p>
+      <button type="button" className={button+" mt-2"}
+        onClick={()=>void navigator.clipboard.writeText(deviceId).then(()=>setNote("Device ID copied."))}>
+        Copy device ID
+      </button>
+    </div>}
     {note&&<p role="status" className="shrink-0 rounded-lg border border-noema-lime/30 p-2 text-xs text-noema-lime">{note}</p>}
     {inviteToken&&!joined ? <section className="space-y-3 rounded-xl border border-noema-border bg-[#111113] p-4">
       <h1 className="text-lg font-semibold">Accept private invitation</h1>
