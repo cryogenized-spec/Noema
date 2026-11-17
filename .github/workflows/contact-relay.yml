@@ -29,3 +29,16 @@ jobs:
       - run: |
           ! grep -r -n "api.openai.com\|Bearer.*apiKey" relay/src
           echo "Relay contains no model provider calls or API-key forwarding."
+
+      - name: Clean install
+        run: npm ci
+      - name: TypeScript and hardening
+        run: npm run typecheck && npm run typecheck:hardening
+      - name: Lint and security gates
+        run: npm run lint && npm run security:gates
+      - name: Unit tests including browser-independent crypto
+        run: npm run test:unit
+      - name: Next.js production build
+        run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
