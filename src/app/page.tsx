@@ -40,7 +40,7 @@ export default function HomePage() {
               activeTab === "agents" ? <AgentStudioScreen /> :
               activeTab === "signals" ? <SignalsScreen /> :
               activeTab === "organizer" ? <OrganizerScreen /> :
-              <ApiLockboxScreen />
+              <ApiLockboxScreen />}
           </div>
         </div>
       </div>
