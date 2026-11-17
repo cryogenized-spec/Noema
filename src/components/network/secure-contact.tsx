@@ -39,6 +39,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [deviceId,setDeviceId]=useState("");
   const [policy,setPolicy]=useState<ReceptionPolicy|null>(null);
   const [threads,setThreads]=useState<RelayThread[]>([]);
+  const [lastChecked,setLastChecked]=useState("");
+  const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
   const [alias,setAlias]=useState("");
@@ -60,6 +62,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const selectedRef=useRef("");
   const sessionRef=useRef<RelaySession|null>(null);
   const threadsRef=useRef<RelayThread[]>([]);
+  const contactsLoaded=useRef(false);
   const policyRef=useRef<ReceptionPolicy|null>(null);
   const readyToPoll=useRef(false);
 
@@ -103,9 +106,22 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const loadThreads=useCallback(async(current:RelaySession)=>{
     const response=await relayGetThreads(current);
     if(!alive.current)return;
+    const known=new Set(threadsRef.current.map(thread=>thread.id));
+    const arrived=contactsLoaded.current
+      ? response.threads.filter(thread=>thread.owner===current.deviceId && !known.has(thread.id))
+      : [];
+    contactsLoaded.current=true;
+    if(arrived.length){
+      setNewThreadIds(previous=>[...new Set([...previous,...arrived.map(thread=>thread.id)])]);
+      setNote(arrived.length===1
+        ? "New guest contact: "+arrived[0].guestAlias
+        : arrived.length+" new guest contacts joined.");
+    }
     setThreads(response.threads);
     threadsRef.current=response.threads;
-    if(!selectedRef.current && response.threads.length && !inviteToken) {
+    setLastChecked(new Date().toLocaleTimeString());
+    if((!selectedRef.current || !response.threads.some(thread=>thread.id===selectedRef.current))
+        && response.threads.length && !inviteToken) {
       const id=response.threads[0].id; setSelected(id);selectedRef.current=id;
     }
   },[inviteToken]);
@@ -324,7 +340,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
 
   return <main className="mx-auto flex h-dvh max-w-[710px] flex-col gap-3 overflow-hidden bg-[#09090b] p-3 text-white sm:p-5">
     <header className="flex shrink-0 items-center justify-between gap-2 border-b border-noema-border pb-3">
-      <Link href="/share" className="text-xs text-noema-lime">← NOEMA</Link>
+      <Link href="/" className="text-xs text-noema-lime">← Workspace</Link>
       <strong className="text-sm">Encrypted contact</strong>
       <span className="text-[10px] text-neutral-400">{session?isOwner?"Owner":"Guest":"Connecting…"}</span>
     </header>
@@ -411,13 +427,41 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         </div>}
       </section>}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-        <div className="shrink-0 overflow-x-auto">
-          <div className="flex w-max min-w-full gap-1.5">
+        <div className="flex shrink-0 items-center justify-between gap-2 px-1">
+          <div className="min-w-0">
+            <h2 className="text-xs font-semibold text-white">
+              {isOwner ? "Guest contacts" : "Conversations"} · {threads.length}
+              {newThreadIds.length>0 && <span className="ml-2 rounded bg-noema-lime px-1.5 py-0.5 text-[10px] text-black">
+                {newThreadIds.length} new
+              </span>}
+            </h2>
+            <p className="text-[10px] text-neutral-500">
+              {lastChecked ? "Last checked "+lastChecked : "Checking the encrypted relay…"}
+            </p>
+          </div>
+          <button type="button" disabled={!session} onClick={()=>{if(session)void receive(session);}}
+            className={button+" shrink-0"} aria-label="Refresh encrypted contacts">
+            <Icon icon="solar:refresh-linear" className="mr-1 inline" aria-hidden="true" />
+            Refresh
+          </button>
+        </div>
+        {isOwner && <p className="shrink-0 px-1 text-[11px] leading-4 text-neutral-400">
+          New guest messages appear here in Contact inbox, not the separate local AI Chat.
+          The inbox checks for arrivals every five seconds while this tab is visible.
+        </p>}
+        <div className="max-h-32 shrink-0 overflow-y-auto">
+          <div className="flex flex-wrap gap-1.5">
             {threads.map(thread=><button type="button" key={thread.id}
-              className={"min-h-9 max-w-[160px] truncate rounded-lg border px-3 text-xs "+
+              className={"flex min-h-9 max-w-[190px] items-center gap-1.5 rounded-lg border px-3 text-xs "+
                 (selected===thread.id?"border-noema-lime text-noema-lime":"border-noema-border text-neutral-400")}
-              onClick={()=>{setSelected(thread.id);selectedRef.current=thread.id;setMessages([]);setError("");}}>
-              {thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}
+              onClick={()=>{
+                setSelected(thread.id);selectedRef.current=thread.id;
+                setNewThreadIds(current=>current.filter(id=>id!==thread.id));
+                setMessages([]);setError("");
+              }}>
+              <span className="truncate">{thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}</span>
+              {newThreadIds.includes(thread.id)&&
+                <span className="shrink-0 rounded bg-noema-lime px-1 text-[9px] font-semibold text-black">NEW</span>}
             </button>)}
           </div>
         </div>
@@ -451,7 +495,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               onClick={()=>void send()}>Send</button>
           </div>
         </section>:<p className="p-5 text-center text-xs text-neutral-500">
-          {isOwner?"Create an invitation, then select a conversation after the visitor joins.":"No conversations yet."}
+          {isOwner?"No guests yet. Use New invite above, and ask the guest to choose Continue anonymously and send a message.":"No conversations yet."}
         </p>}
       </div>
       {isOwner&&deviceId&&<p className="shrink-0 break-all text-[10px] text-neutral-600">
