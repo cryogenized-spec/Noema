@@ -16,9 +16,13 @@ export function safeRssArticleUrl(raw: string, base: string): string {
   } catch { return ""; }
 }
 function textFromHtml(raw: string): string {
-  const html = new DOMParser().parseFromString(raw, "text/html");
-  for (const el of html.querySelectorAll("script,style,iframe,object,embed,svg")) el.remove();
-  return trimmed(html.body.textContent, 380);
+  // Decode entities in an inert textarea; do not construct a document
+  // containing remote images/iframes that may trigger network requests.
+  const withoutTags = raw.replace(/<\s*(?:script|style)\b[^>]*>[\s\S]*?<\s*\/\s*(?:script|style)\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ");
+  const textarea = document.createElement("textarea");
+  textarea.innerHTML = withoutTags;
+  return trimmed(textarea.value, 380);
 }
 
 /** DOMParser creates an inert XML document and React outputs only text;
@@ -33,8 +37,10 @@ export function parseRssXml(xml: string, feedUrl: string): ParsedRssFeed {
   if (!root || !["rss", "feed", "rdf"].includes(root.localName.toLowerCase()))
     throw new Error("This page does not contain an RSS or Atom feed.");
   const atom = root.localName.toLowerCase() === "feed";
-  const channel = atom ? root : child(root, "channel") ?? root;
-  const title = trimmed(value(channel, "title"), 100) || new URL(feedUrl).hostname;
+  const isRdf = root.localName.toLowerCase() === "rdf";
+  const channel = atom || isRdf ? root : child(root, "channel") ?? root;
+  const title = trimmed(value(isRdf ? child(root, "channel") ?? root : channel, "title"), 100)
+    || new URL(feedUrl).hostname;
   const articles = Array.from(atom ? root.children : channel.children)
     .filter((entry) => atom ? entry.localName === "entry" : entry.localName === "item")
     .slice(0, 35).map((entry) => {
