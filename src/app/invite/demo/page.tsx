@@ -42,6 +42,14 @@ function cleanAlias(raw: string): string {
 export default function InviteDemoPage() {
   // Do not let a legacy demonstration QR impersonate the real messaging
   // flow once the encrypted relay is enabled on this PWA origin.
+  const [stage, setStage] = useState<Stage>("identity");
+  const [alias, setAlias] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [draft, setDraft] = useState(prompts[0]);
+  const [localMessages, setLocalMessages] = useState<string[]>([]);
+  const [status, setStatus] = useState("");
+  const [copied, setCopied] = useState(false);
+
   if (relayAvailable) return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 p-5 text-white">
       <span className="w-fit rounded border border-noema-gold/40 px-3 py-1 text-xs text-noema-gold">
@@ -62,13 +70,6 @@ export default function InviteDemoPage() {
       </p>
     </main>
   );
-  const [stage, setStage] = useState<Stage>("identity");
-  const [alias, setAlias] = useState("");
-  const [guestName, setGuestName] = useState("");
-  const [draft, setDraft] = useState(prompts[0]);
-  const [localMessages, setLocalMessages] = useState<string[]>([]);
-  const [status, setStatus] = useState("");
-  const [copied, setCopied] = useState(false);
 
   function continueAsGuest() {
     setGuestName(cleanAlias(alias) || nextPersona());
