@@ -1,23 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Icon } from "@iconify/react";
 import { TopBar } from "@/components/layout/top-bar";
 import { WorkspaceNavigation } from "@/components/layout/workspace-navigation";
 import type { TabKey } from "@/components/layout/bottom-tabs";
 import { ChatScreen } from "@/components/chat/chat-screen";
-import { GlassPanel } from "@/components/ui/glass-panel";
 import { ApiLockboxScreen } from "@/components/settings/api-lockbox-screen";
 import { AgentStudioScreen } from "@/components/agents/agent-studio-screen";
 import { OrganizerScreen } from "@/components/organizer/organizer-screen";
 import { SignalsScreen } from "@/components/signals/signals-screen";
-
-const placeholders: Record<Exclude<TabKey, "chat" | "agents" | "organizer" | "signals">, { title: string; description: string }> = {
-  settings: {
-    title: "Settings",
-    description: "Privacy, sync and preference controls are queued for later iterations.",
-  },
-};
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<TabKey>("chat");
@@ -49,15 +40,7 @@ export default function HomePage() {
               activeTab === "agents" ? <AgentStudioScreen /> :
               activeTab === "signals" ? <SignalsScreen /> :
               activeTab === "organizer" ? <OrganizerScreen /> :
-              activeTab === "settings" ? <ApiLockboxScreen /> : (
-                <GlassPanel>
-                  <section className="flex min-h-64 flex-col justify-center px-5 py-7 text-center">
-                    <Icon icon="solar:radar-2-linear" className="mx-auto mb-4 text-3xl text-noema-violet" />
-                    <h1 className="text-lg font-semibold text-white">{placeholders[activeTab].title}</h1>
-                    <p className="mt-2 text-sm text-noema-muted">{placeholders[activeTab].description}</p>
-                  </section>
-                </GlassPanel>
-              )}
+              <ApiLockboxScreen />
           </div>
         </div>
       </div>
