@@ -375,7 +375,7 @@ export function AgentStudioScreen() {
                 <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-noema-lime">Agent responsibilities</h3>
                 <p className="mt-2 text-xs leading-5 text-neutral-400">
                   Adapted from the six colour pins in Project RADIX. One agent owns each responsibility. An agent may hold several.
-                  Assignments are saved locally; no incoming guest traffic or automation is currently activated.
+                  Assignments are saved locally; guest messaging is available only after the separate encrypted contact bridge is configured and owner switches are enabled.
                 </p>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
@@ -409,18 +409,19 @@ export function AgentStudioScreen() {
                 })}
               </div>
               <label className="block text-xs text-neutral-300">
-                Planned guest visibility
+                Guest reception eligibility
                 <select value={editingAgent.guestVisibility ?? "private"}
                   onChange={(event) => applyDraft({ guestVisibility: event.target.value === "invited" ? "invited" : "private" })}
                   className="mt-2 w-full rounded-lg border border-noema-border bg-black px-3 py-2 text-sm">
                   <option value="private">Private to owner</option>
-                  <option value="invited">Invited guests (future only)</option>
+                  <option value="invited">Invited guests (requires approved contact bridge)</option>
                 </select>
               </label>
               <p className="rounded-lg border border-noema-gold/30 bg-[#201811] p-3 text-[11px] leading-5 text-neutral-300">
-                These selections do not grant permission to read files, use MCP tools, send messages,
-                spend API credits or impersonate you. Guest auto-reply will remain disabled until
-                authenticated E2EE delivery, explicit owner approval and consumption limits are implemented.
+                Assigning a role or selecting Invited does not authorise messaging, model spending,
+                file access or MCP tools by itself. The owner must enable AI Reception globally and
+                for each conversation inside the encrypted Contact inbox, with an unlocked API Lockbox.
+                There is no guaranteed background wake. No MCP permissions are granted.
               </p>
             </section>
           )}
