@@ -117,6 +117,7 @@ export function SignalsScreen() {
       if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password)
         throw Error();
     } catch { setError("Enter a valid HTTPS RSS/Atom address."); return; }
+    parsed.hash = "";
     const url = parsed.toString();
     if (subscriptions.some((entry) => entry.url === url)) {
       setError("That source is already subscribed."); return;
@@ -318,7 +319,7 @@ export function SignalsScreen() {
               </button>
               <p className="text-[11px] leading-4 text-neutral-500">
                 HTTPS feeds only. Some sites block feed readers or provide no public RSS.
-                Social-media bridges are not emulated; no fictitious articles are generated.
+                Social-media bridges are not emulated; no fictitious articles are generated. Avoid feed URLs containing private access tokens.
               </p>
             </section>
             <section className="space-y-2 rounded-lg border border-noema-border bg-[#111113] p-3">
@@ -387,7 +388,7 @@ export function SignalsScreen() {
         )}
       </div>
       <footer className="shrink-0 border-t border-noema-border px-2 pt-2 text-[10px] leading-4 text-neutral-500">
-        Articles are live on refresh and cached for offline reading. No server-side AI analysis or tracking is active.
+        Headlines and excerpts are cached for offline viewing; full articles open on publisher sites. No AI analysis or analytics is active.
       </footer>
     </section>
   );
