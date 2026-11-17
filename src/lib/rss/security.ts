@@ -14,7 +14,7 @@ export function safeRssSourceUrl(input: string): URL {
     throw new Error("Only ordinary HTTPS feed URLs are supported.");
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   if (!hostname.includes(".") || isIP(hostname) || /(?:^|\.)(?:localhost|local|internal|test|invalid|example|onion|arpa)$/.test(hostname)
-    || hostname.includes("%") || hostname.length > 253)
+    || hostname.includes("%") || hostname.includes(":") || hostname.includes("[") || hostname.length > 253)
     throw new Error("The requested feed host is not allowed.");
   url.hash = "";
   return url;
