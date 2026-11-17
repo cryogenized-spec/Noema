@@ -68,6 +68,9 @@ export class NoemaRelayRoom {
   async fetch(req) {
     if (!(await this.limit(req))) return fail(429,"Too many requests.");
     const url = new URL(req.url);
+    // Fail closed in a deployed but not yet owner-bound staging environment.
+    // Avoid creating DO sessions or charging storage when OWNER_DEVICE_ID is absent.
+    if (!this.env.OWNER_DEVICE_ID) return fail(503,"Private messaging is not activated.");
     if (req.method === "POST" && url.pathname === "/v1/auth/challenge") {
       const input = await body(req);
       const deviceId = await fingerprint(input.publicJwk);
