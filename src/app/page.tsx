@@ -10,12 +10,9 @@ import { GlassPanel } from "@/components/ui/glass-panel";
 import { ApiLockboxScreen } from "@/components/settings/api-lockbox-screen";
 import { AgentStudioScreen } from "@/components/agents/agent-studio-screen";
 import { OrganizerScreen } from "@/components/organizer/organizer-screen";
+import { SignalsScreen } from "@/components/signals/signals-screen";
 
 const placeholders: Record<Exclude<TabKey, "chat" | "agents" | "organizer">, { title: string; description: string }> = {
-  signals: {
-    title: "Signals",
-    description: "Your curated updates and watchpoints will appear here in a future slice.",
-  },
   settings: {
     title: "Settings",
     description: "Privacy, sync and preference controls are queued for later iterations.",
@@ -50,6 +47,7 @@ export default function HomePage() {
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-2 sm:p-3">
             {activeTab === "chat" ? <ChatScreen /> :
               activeTab === "agents" ? <AgentStudioScreen /> :
+              activeTab === "signals" ? <SignalsScreen /> :
               activeTab === "organizer" ? <OrganizerScreen /> :
               activeTab === "settings" ? <ApiLockboxScreen /> : (
                 <GlassPanel>
