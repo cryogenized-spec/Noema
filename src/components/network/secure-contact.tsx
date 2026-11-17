@@ -7,6 +7,8 @@ import { useAgentStore } from "@/store/agent-store";
 import { useLockboxStore } from "@/store/lockbox-store";
 import { normalizeAgentRoles } from "@/lib/agents/role-routing";
 import { readOpenAIStream } from "@/lib/ai/openai-sse";
+import { getOrCreateDeviceIdentity } from "@/lib/security/device-identity";
+import { ContactQrCode } from "@/components/contact/contact-qr-code";
 import {
   ensureRelaySession, relayAvailable, relayFetch, relayGetIdentity, relayGetMessages, relayGetPolicy,
   relayGetThreads, relayPostMessage, relaySetPolicy, relaySetThreadReception,
@@ -75,6 +77,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     alive.current=true;
     hydrateAgents(); hydrateVault();
     if(inviteToken) setInviteSecret(secretFromHash(window.location.hash));
+    void getOrCreateDeviceIdentity().then(identity=>{
+      if(alive.current)setDeviceId(identity.deviceId);
+    }).catch(e=>{if(alive.current)setError(errText(e));});
     if(!relayAvailable)return;
     void ensureRelaySession().then(async current=>{
       if(!alive.current)return;
@@ -298,9 +303,23 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     <h1 className="mt-5 text-lg font-semibold">Secure contact bridge</h1>
     <p className="mt-3 rounded-lg border border-noema-gold/40 bg-[#1b1712] p-4 text-sm leading-6 text-neutral-300">
       Cloudflare relay is not configured for this PWA deployment. No invitation can be issued or redeemed.
-      Set NEXT_PUBLIC_NOEMA_RELAY_URL to an explicitly approved Worker HTTPS origin after owner-device setup.
+      Set NEXT_PUBLIC_NOEMA_RELAY_URL to an approved Worker HTTPS origin after owner-device setup.
       The existing invitation demo remains separate and non-networked.
     </p>
+    <section className="mt-3 rounded-lg border border-noema-border p-3">
+      <h2 className="mb-2 text-sm font-semibold">Your signed device identifier</h2>
+      <p className="mb-2 text-xs leading-5 text-neutral-400">
+        Use a stable HTTPS PWA domain first; browser identity is specific to its origin.
+        This device ID is public identity metadata, not an API key. Enter it as
+        OWNER_DEVICE_ID in your private Cloudflare Worker configuration.
+      </p>
+      <p className="break-all font-mono text-[11px] text-noema-lime">{deviceId||"Generating secure browser identity…"}</p>
+      {deviceId&&<button type="button" className={button+" mt-3"}
+        onClick={()=>void navigator.clipboard.writeText(deviceId).then(()=>setNote("Device ID copied."))}>
+        Copy device ID
+      </button>}
+      {note&&<p className="mt-2 text-xs text-noema-lime">{note}</p>}
+    </section>
   </main>;
 
   return <main className="mx-auto flex h-dvh max-w-[710px] flex-col gap-3 overflow-hidden bg-[#09090b] p-3 text-white sm:p-5">
@@ -355,9 +374,28 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
             onClick={()=>void createInvite()}>New invite</button>
         </div>
         {inviteUrl&&<div className="flex flex-col gap-2">
+          <ContactQrCode value={inviteUrl} label="Encrypted NOEMA contact invitation" />
           <p className="break-all text-[11px] text-neutral-400">{inviteUrl}</p>
-          <button type="button" className={button}
-            onClick={()=>void navigator.clipboard.writeText(inviteUrl).then(()=>setNote("Invite copied. Send the complete link privately."))}>Copy invite URL</button>
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" className={button}
+              onClick={()=>void navigator.clipboard.writeText(inviteUrl).then(()=>setNote("Invite copied. Send the complete link privately."))}>
+              Copy link
+            </button>
+            <a href={"https://wa.me/?text="+encodeURIComponent("Chat privately with me on NOEMA: "+inviteUrl)}
+              className={button+" flex items-center justify-center"} target="_blank" rel="noopener noreferrer">
+              WhatsApp
+            </a>
+            <button type="button" className={button+" text-rose-300"}
+              onClick={()=>void action(async()=>{
+                if(!session)throw Error("Owner sign-in required.");
+                const token=new URL(inviteUrl).pathname.split("/").at(-1);
+                if(!token)throw Error("Invalid invitation URL.");
+                await relayFetch("/v1/invites/revoke",{session,method:"POST",body:{token}});
+                setInviteUrl("");setNote("Unredeemed invitation revoked.");
+              })}>
+              Revoke
+            </button>
+          </div>
         </div>}
       </section>}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
