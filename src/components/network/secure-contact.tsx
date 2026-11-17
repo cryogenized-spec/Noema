@@ -231,7 +231,16 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     };
     void tick();
     const timer=window.setInterval(()=>{void tick();},5000);
-    return()=>{readyToPoll.current=false;window.clearInterval(timer);abort.current?.abort();};
+    const onForeground=()=>{if(document.visibilityState==="visible")void tick();};
+    window.addEventListener("focus",onForeground);
+    document.addEventListener("visibilitychange",onForeground);
+    return()=>{
+      readyToPoll.current=false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus",onForeground);
+      document.removeEventListener("visibilitychange",onForeground);
+      abort.current?.abort();
+    };
   },[session,joined,inviteToken,isOwner,receive,processReception]);
 
   const action=async(fn:()=>Promise<void>)=>{
