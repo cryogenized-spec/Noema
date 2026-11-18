@@ -48,21 +48,11 @@ export default function ContactBridgePage() {
             Create an invitation there, then scan it with another authorised device.
             Messages appear under Guest contacts in that inbox—not in local AI Chat.
           </p>
-          {!relayAvailable && <p className="rounded-lg border border-noema-gold/30 bg-[#221d11] p-3 text-xs leading-5 text-noema-gold">
-            This development preview has no Cloudflare relay. Its browser identity is
-            separate from the registered staging owner. The button below opens
-            the connected, stable Contact site without changing your owner device.
-          </p>}
           <a href={relayAvailable ? "/connect" : stableContactUrl}
             className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-noema-lime px-3 text-sm font-semibold text-black">
             <Icon icon="solar:chat-round-dots-bold" aria-hidden="true" />
             {relayAvailable ? "Open encrypted inbox / New invite" : "Open connected Contact inbox"}
           </a>
-          <p className="text-[11px] leading-5 text-neutral-500">
-            No demo QR is shown here: older demonstration chats never sent messages to
-            Cloudflare. Use only a fresh invitation from the connected Contact inbox.
-            This private staging service still requires Vercel access for both browsers.
-          </p>
         </section>
 
         <section className="space-y-3 rounded-xl border border-noema-border bg-[#111113] p-4">
