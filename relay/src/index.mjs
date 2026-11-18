@@ -2,6 +2,7 @@ import {
   LIMITS, randomToken, sha256, fingerprint, alias, messageText,
   verifyDeviceProof, sameOrigin, isId,
 } from "./protocol.mjs";
+import { AccountRegistry } from "./account-registry.mjs";
 
 const now = () => Date.now();
 const iso = () => new Date().toISOString();
@@ -109,6 +110,17 @@ export class NoemaRelayRoom {
 
     const session=await this.user(req);
     if (!session) return fail(401,"Authenticated device session required.");
+
+    // Account registration, pairing and revocation are a separately reviewed
+    // future protocol. Disabled in every live NOEMA staging deployment today.
+    // Never treat account ownership as the existing pilot OWNER_DEVICE_ID role.
+    if (url.pathname==="/v1/accounts" || url.pathname.startsWith("/v1/accounts/")) {
+      if (this.env.ACCOUNT_REGISTRATION_ENABLED!=="true")
+        return fail(503,"Multi-user account enrollment is not activated.");
+      const registry=new AccountRegistry(this.state.storage,
+        deviceId=>this.state.storage.get("device:"+deviceId));
+      return registry.route(req,session);
+    }
     if (req.method==="GET" && url.pathname==="/v1/identity") {
       return json({deviceId:session.deviceId,owner:this.owner(session)});
     }
