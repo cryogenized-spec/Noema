@@ -52,7 +52,8 @@ export async function open(secret,threadId,clientId,ciphertext){
   return result;
 }
 export const inviteKeyFromHash=(hash)=>{
-  const secret=new URLSearchParams(String(hash||"").replace(/^#/,"")).get("k")||"";
+  if(typeof hash!=="string"||!hash.startsWith("#"))return "";
+  const secret=new URLSearchParams(hash.slice(1)).get("k")||"";
   return /^[A-Za-z0-9_-]{43}$/.test(secret)?secret:"";
 };
 export const deviceProofBytes=(deviceId,challenge,audience,issuedAt)=>
