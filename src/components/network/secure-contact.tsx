@@ -9,6 +9,7 @@ import { normalizeAgentRoles } from "@/lib/agents/role-routing";
 import { readOpenAIStream } from "@/lib/ai/openai-sse";
 import { getOrCreateDeviceIdentity } from "@/lib/security/device-identity";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
+import { makePublicGuestInvite } from "@/lib/network/public-guest-link";
 import {
   ensureRelaySession, relayAvailable, relayFetch, relayGetIdentity, relayGetMessages, relayGetPolicy,
   relayGetThreads, relayPostMessage, relaySetPolicy, relaySetThreadReception,
@@ -257,7 +258,11 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     const response=await relayFetch<{token:string;keyId:string;expiresAt:string}>("/v1/invites",{
       session,method:"POST",body:{alias:alias||"NOEMA Contact",keyId},
     });
-    setInviteUrl(window.location.origin+"/invite/"+response.token+"#k="+secret);
+    // The guest PWA has a permanent public origin. The owner app stays SSO-protected.
+    const guestBase=process.env.NEXT_PUBLIC_NOEMA_GUEST_ORIGIN;
+    setInviteUrl(guestBase
+      ? makePublicGuestInvite(guestBase,response.token,secret)
+      : window.location.origin+"/invite/"+response.token+"#k="+secret);
     setNote("Single-use invite ready. The link contains its decryption secret: share it privately.");
   });
   const redeem=()=>action(async()=>{
