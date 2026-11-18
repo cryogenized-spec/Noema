@@ -89,6 +89,9 @@ export async function ensureRelaySession(force = false): Promise<RelaySession> {
   });
   try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); }
   catch { /* Session works for current component lifetime. */ }
+  // The global notification is mounted before Contact authentication completes.
+  // Inform it immediately without exposing the signed token in the event.
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("noema:relay-session"));
   return session;
 }
 export const relayGetThreads = (session: RelaySession) =>
