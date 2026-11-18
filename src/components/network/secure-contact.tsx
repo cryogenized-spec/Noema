@@ -9,6 +9,7 @@ import { normalizeAgentRoles } from "@/lib/agents/role-routing";
 import { readOpenAIStream } from "@/lib/ai/openai-sse";
 import { getOrCreateDeviceIdentity } from "@/lib/security/device-identity";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
+import { makePublicGuestInvite } from "@/lib/network/public-guest-link";
 import {
   ensureRelaySession, relayAvailable, relayFetch, relayGetIdentity, relayGetMessages, relayGetPolicy,
   relayGetThreads, relayPostMessage, relaySetPolicy, relaySetThreadReception,
@@ -39,7 +40,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [deviceId,setDeviceId]=useState("");
   const [policy,setPolicy]=useState<ReceptionPolicy|null>(null);
   const [threads,setThreads]=useState<RelayThread[]>([]);
-  const [lastChecked,setLastChecked]=useState("");
   const [ownerSection,setOwnerSection]=useState<"inbox"|"invites"|"reception">("inbox");
   const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
@@ -120,7 +120,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     }
     setThreads(response.threads);
     threadsRef.current=response.threads;
-    setLastChecked(new Date().toLocaleTimeString());
     if((!selectedRef.current || !response.threads.some(thread=>thread.id===selectedRef.current))
         && response.threads.length && !inviteToken) {
       const id=response.threads[0].id; setSelected(id);selectedRef.current=id;
@@ -257,7 +256,11 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     const response=await relayFetch<{token:string;keyId:string;expiresAt:string}>("/v1/invites",{
       session,method:"POST",body:{alias:alias||"NOEMA Contact",keyId},
     });
-    setInviteUrl(window.location.origin+"/invite/"+response.token+"#k="+secret);
+    // The guest PWA has a permanent public origin. The owner app stays SSO-protected.
+    const guestBase=process.env.NEXT_PUBLIC_NOEMA_GUEST_ORIGIN;
+    setInviteUrl(guestBase
+      ? makePublicGuestInvite(guestBase,response.token,secret)
+      : window.location.origin+"/invite/"+response.token+"#k="+secret);
     setNote("Single-use invite ready. The link contains its decryption secret: share it privately.");
   });
   const redeem=()=>action(async()=>{
@@ -271,7 +274,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     setSelected(response.thread.id);selectedRef.current=response.thread.id;
     setJoined(true);setInviteSecret("");
     window.history.replaceState(null,"","/connect");
-    setNote("Joined. Your first message will be encrypted before delivery.");
+    setNote("");
   });
   const send=()=>action(async()=>{
     if(!session || !active || !draft.trim())return;
@@ -287,7 +290,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     await relayPostMessage(session,active.id,ciphertext,id);
     pendingSend.current=null;setDraft("");
     await loadMessages(session,active);
-    setNote("Encrypted message stored on the relay. The recipient can see it in their Contact inbox.");
+    setNote("");
   });
   const switchGlobal=()=>action(async()=>{
     if(!session || !isOwner || !policy)return;
@@ -348,15 +351,20 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     </section>
   </main>;
 
-  return <main className="mx-auto flex h-dvh max-w-[710px] flex-col gap-3 overflow-hidden bg-[#09090b] p-3 text-white sm:p-5">
-    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-noema-border pb-3">
-      <Link href="/" className="text-xs text-noema-lime">← Workspace</Link>
-      <strong className="text-sm">Encrypted contact</strong>
-      <span className="text-[10px] text-neutral-400">{session?isOwner?"Owner":"Guest":"Connecting…"}</span>
+  return <main className="mx-auto flex h-dvh min-h-0 max-w-[910px] flex-col gap-2 overflow-hidden bg-[#09090b] px-2 py-2 text-white sm:px-4 sm:py-3">
+    <header className="flex min-h-10 shrink-0 items-center gap-2 border-b border-noema-border pb-2">
+      <Link href="/" className="shrink-0 text-xs text-noema-lime" aria-label="Back to NOEMA workspace">
+        <Icon icon="solar:arrow-left-linear" className="text-lg" aria-hidden="true" />
+      </Link>
+      <strong className="min-w-0 flex-1 truncate text-sm">Messages</strong>
+      {isOwner&&<select aria-label="Contact section" className="min-h-9 max-w-[145px] rounded-lg border border-noema-border bg-[#111113] px-2 text-xs text-neutral-200"
+        value={ownerSection} onChange={e=>{setOwnerSection(e.target.value as "inbox"|"invites"|"reception");setNote("");setError("");}}>
+        <option value="inbox">Inbox{newThreadIds.length>0?" · "+newThreadIds.length+" new":""}</option>
+        <option value="invites">Invites / QR</option>
+        <option value="reception">Reception</option>
+      </select>}
+      <span className="shrink-0 text-[10px] text-neutral-500">{session?isOwner?"Owner":"Guest":"Connecting…"}</span>
     </header>
-    <p className="shrink-0 text-[11px] leading-5 text-neutral-400">
-      Invite-key AES-GCM encryption · 5-second visible-tab polling · no server-side model calls · not independently audited
-    </p>
     {error&&<p role="alert" className="shrink-0 rounded-lg border border-rose-600/30 bg-rose-950/20 p-2 text-xs text-rose-200">{error}</p>}
     {!session&&deviceId&&<div className="shrink-0 rounded-lg border border-noema-lime/20 bg-[#101612] p-3">
       <p className="text-xs font-semibold text-noema-lime">Owner device registration</p>
@@ -370,10 +378,10 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         Copy device ID
       </button>
     </div>}
-    {note&&<p role="status" className="shrink-0 rounded-lg border border-noema-lime/30 p-2 text-xs text-noema-lime">{note}</p>}
+    {note && (inviteToken&&!joined || isOwner && ownerSection!=="inbox") &&
+      <p role="status" className="shrink-0 rounded-lg border border-noema-border px-2 py-1.5 text-xs text-noema-lime">{note}</p>}
     {inviteToken&&!joined ? <section className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-xl border border-noema-border bg-[#111113] p-4">
       <h1 className="text-lg font-semibold">Accept private invitation</h1>
-      <p className="text-xs text-neutral-400">Only pressing Continue redeems this invitation. Opening or previewing the link never wakes an agent.</p>
       {!inviteSecret&&<p className="text-xs text-rose-300">The encryption key is missing from the link. Do not redeem this invitation.</p>}
       <input className={field} maxLength={32} placeholder="Choose a display name (optional)" value={alias}
         onChange={e=>setAlias(e.target.value)} />
@@ -381,17 +389,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       <button type="button" className={primary+" w-full"} disabled={!session||!inviteSecret||busy}
         onClick={()=>void redeem()}>Continue anonymously</button>
     </section> : <>
-      {isOwner&&<nav className="grid shrink-0 grid-cols-3 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1"
-          aria-label="Encrypted contact sections">
-        {(["inbox","invites","reception"] as const).map(section=><button
-          key={section} type="button" aria-current={ownerSection===section?"page":undefined}
-          className={"min-h-10 rounded-md px-2 text-xs font-semibold "+
-            (ownerSection===section?"bg-noema-lime text-black":"text-neutral-400 hover:bg-white/[0.06] hover:text-white")}
-          onClick={()=>setOwnerSection(section)}>
-          {section==="inbox"?"Inbox":section==="invites"?"Invites":"Reception"}
-          {section==="inbox"&&newThreadIds.length>0?" · "+newThreadIds.length:""}
-        </button>)}
-      </nav>}
       {isOwner&&ownerSection==="reception"&&<section className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-noema-border bg-[#111113] p-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold">Reception · {receptionist?.name||"No red agent assigned"}</span>
@@ -400,7 +397,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
             Global {policy?.enabled?"ON":"OFF"}
           </button>
         </div>
-        <p className="text-[11px] leading-4 text-neutral-500">Requires a red agent set to Invited in AI Studio, an unlocked API Lockbox and a visible owner browser tab. No MCP access.</p>
         {policy&&<div className="grid grid-cols-2 gap-2">
           <label className="text-[11px] text-neutral-400">Daily attempts (max 8)
             <select className={field+" mt-1"} value={policy.maxDailyCalls} disabled={busy}
@@ -424,7 +420,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         </div>
         {inviteUrl&&<div className="flex flex-col gap-2">
           <ContactQrCode value={inviteUrl} label="Encrypted NOEMA contact invitation" />
-          <p className="break-all text-[11px] text-neutral-400">{inviteUrl}</p>
           <div className="grid grid-cols-3 gap-2">
             <button type="button" className={button}
               onClick={()=>void navigator.clipboard.writeText(inviteUrl).then(()=>setNote("Invite copied. Send the complete link privately."))}>
@@ -437,7 +432,10 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
             <button type="button" className={button+" text-rose-300"}
               onClick={()=>void action(async()=>{
                 if(!session)throw Error("Owner sign-in required.");
-                const token=new URL(inviteUrl).pathname.split("/").at(-1);
+                const url=new URL(inviteUrl);
+                const token=url.hash
+                  ? new URLSearchParams(url.hash.slice(1)).get("invite")
+                  : url.pathname.split("/").at(-1);
                 if(!token)throw Error("Invalid invitation URL.");
                 await relayFetch("/v1/invites/revoke",{session,method:"POST",body:{token}});
                 setInviteUrl("");setNote("Unredeemed invitation revoked.");
@@ -448,56 +446,39 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         </div>}
       </section>}
       {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-        <div className="flex shrink-0 items-center justify-between gap-2 px-1">
-          <div className="min-w-0">
-            <h2 className="text-xs font-semibold text-white">
-              {isOwner ? "Guest contacts" : "Conversations"} · {threads.length}
-              {newThreadIds.length>0 && <span className="ml-2 rounded bg-noema-lime px-1.5 py-0.5 text-[10px] text-black">
-                {newThreadIds.length} new
-              </span>}
-            </h2>
-            <p className="text-[10px] text-neutral-500">
-              {lastChecked ? "Last checked "+lastChecked : "Checking the encrypted relay…"}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {isOwner&&<button type="button" className={primary} onClick={()=>setOwnerSection("invites")}>
-              New invite
-            </button>}
-            <button type="button" disabled={!session} onClick={()=>{if(session)void receive(session);}}
-              className={button} aria-label="Refresh encrypted contacts">
-              <Icon icon="solar:refresh-linear" className="mr-1 inline" aria-hidden="true" />
-              Refresh
-            </button>
-          </div>
-        </div>
-        {isOwner && <p className="shrink-0 px-1 text-[11px] leading-4 text-neutral-400">
-          New guest messages appear here in Contact inbox, not the separate local AI Chat.
-          The inbox checks for arrivals every five seconds while this tab is visible.
-        </p>}
-        <div className="max-h-32 shrink-0 overflow-y-auto">
-          <div className="flex flex-wrap gap-1.5">
-            {threads.map(thread=><button type="button" key={thread.id}
-              className={"flex min-h-9 max-w-[190px] items-center gap-1.5 rounded-lg border px-3 text-xs "+
-                (selected===thread.id?"border-noema-lime text-noema-lime":"border-noema-border text-neutral-400")}
-              onClick={()=>{
-                setSelected(thread.id);selectedRef.current=thread.id;
-                setNewThreadIds(current=>current.filter(id=>id!==thread.id));
-                setMessages([]);setError("");
-              }}>
-              <span className="truncate">{thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}</span>
-              {newThreadIds.includes(thread.id)&&
-                <span className="shrink-0 rounded bg-noema-lime px-1 text-[9px] font-semibold text-black">NEW</span>}
-            </button>)}
-          </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {threads.length>0?<select aria-label="Select conversation" value={selected} className="min-h-10 min-w-0 flex-1 truncate rounded-lg border border-noema-border bg-[#111113] px-3 text-xs text-white"
+            onChange={e=>{
+              setSelected(e.target.value);selectedRef.current=e.target.value;
+              setNewThreadIds(current=>current.filter(id=>id!==e.target.value));
+              setMessages([]);setError("");
+            }}>
+            {threads.map(thread=><option value={thread.id} key={thread.id}>
+              {thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}{newThreadIds.includes(thread.id)?" · NEW":""}
+            </option>)}
+          </select>:<span className="min-w-0 flex-1 text-xs text-neutral-500">No conversations</span>}
+          {isOwner&&<button type="button" title="Create invitation" aria-label="Create invitation" className={button+" px-3"}
+            onClick={()=>setOwnerSection("invites")}>
+            <Icon icon="solar:user-plus-linear" className="text-lg" aria-hidden="true" />
+          </button>}
+          <button type="button" title="Refresh" disabled={!session}
+            onClick={()=>{if(session)void receive(session);}}
+            className={button+" px-3"} aria-label="Refresh conversations">
+            <Icon icon="solar:refresh-linear" className="text-lg" aria-hidden="true" />
+          </button>
         </div>
         {active?<section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113]">
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-noema-border p-3">
-            <p className="truncate text-xs font-semibold">{ownerThread?active.guestAlias:active.ownerAlias}</p>
-            {ownerThread?<button type="button" disabled={busy||!session}
-              onClick={()=>void switchThread()} className={active.receptionEnabled?primary:button}>
-              Thread AI {active.receptionEnabled?"ON":"OFF"}
-            </button>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI may answer · disclosed</span>}
+          <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-b border-noema-border px-3 py-1.5">
+            <p className="truncate text-xs font-medium">{ownerThread?active.guestAlias:active.ownerAlias}</p>
+            {ownerThread?<details className="relative shrink-0">
+              <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-base text-neutral-400" aria-label="Conversation settings">⋯</summary>
+              <div className="absolute right-0 z-20 mt-1 rounded-lg border border-noema-border bg-[#191c1a] p-2 shadow-lg">
+                <button type="button" disabled={busy||!session} onClick={()=>void switchThread()}
+                  className={button+" whitespace-nowrap"}>
+                  AI Reception: {active.receptionEnabled?"On":"Off"}
+                </button>
+              </div>
+            </details>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
           </div>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
             {messages.map(msg=><div key={msg.id}
@@ -514,19 +495,16 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
             {answering&&<p className="text-xs text-noema-violet">AI processing in this owner tab…</p>}
           </div>
           <div className="flex shrink-0 items-end gap-2 border-t border-noema-border p-2">
-            <textarea className={field} rows={2} maxLength={3000} value={draft}
-              placeholder="Type an encrypted message…" aria-label="Encrypted message"
+            <textarea className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
+              placeholder="Message…" aria-label="Message"
               onChange={e=>setDraft(e.target.value)} />
             <button type="button" className={primary} disabled={!draft.trim()||busy||!session}
               onClick={()=>void send()}>Send</button>
           </div>
-        </section>:<p className="p-5 text-center text-xs text-neutral-500">
-          {isOwner?"No guest contacts yet. Choose New invite, then ask your guest to press Continue anonymously and send a message.":"No conversations yet."}
-        </p>}
+        </section>:<div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-noema-border bg-[#111113] p-4 text-center text-xs text-neutral-500">
+          No conversations yet.
+        </div>}
       </div>}
-      {isOwner&&deviceId&&<p className="shrink-0 break-all text-[10px] text-neutral-600">
-        Owner device ID for Cloudflare OWNER_DEVICE_ID setup: {deviceId}
-      </p>}
     </>}
   </main>;
 }

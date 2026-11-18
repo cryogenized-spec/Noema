@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0d10">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://noema-contact-relay-staging.cryogenized.workers.dev; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <title>NOEMA · Private conversations</title>
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="header"><div class="brand"><span class="glyph">◈</span><span>NOEMA</span></div></header>
+    <main class="content">
+      <nav id="threads" class="threads" aria-label="Your conversations" hidden></nav>
+      <section id="onboarding" class="onboarding" hidden>
+        <h1 id="invite-title">Private invitation</h1>
+        <p id="invite-description" class="muted">Choose how you want to appear in this conversation.</p>
+        <label for="alias" class="tiny">Display name</label>
+        <input id="alias" maxlength="32" autocomplete="nickname" placeholder="Your name (optional)">
+        <button id="accept" class="primary wide" type="button">Join conversation</button>
+      </section>
+      <section id="empty" class="empty">
+        <div class="empty-glyph">◈</div>
+        <h1>Your private conversations</h1>
+        <p>Open an invitation from your NOEMA contact to start chatting.</p>
+      </section>
+      <section id="chat" class="chat" hidden>
+        <div class="conversation-title"><strong id="recipient">Conversation</strong><button id="refresh" type="button" class="quiet" title="Refresh messages" aria-label="Refresh messages">↻</button></div>
+        <div id="messages" class="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <form id="composer" class="composer">
+          <label for="message" class="sr-only">Your message</label>
+          <textarea id="message" placeholder="Message…" rows="1" maxlength="3000" enterkeyhint="send"></textarea>
+          <button type="submit" class="primary send" id="send" aria-label="Send message">Send</button>
+        </form>
+      </section>
+    </main>
+    <footer id="footer" class="footer" hidden><span id="status" role="status" aria-live="polite"></span></footer>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

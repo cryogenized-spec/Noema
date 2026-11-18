@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - "relay/**"
+      - "guest-public/**"
+      - "src/lib/network/public-guest-link.ts"
+      - "tests/guest-owner-interop.test.mjs"
+      - "tests/public-guest-link.test.mjs"
       - "src/lib/network/**"
       - "src/components/network/**"
       - "src/types/contact.ts"
@@ -15,11 +19,13 @@ on:
       - "src/lib/identity/**"
       - "src/types/identity.ts"
       - "tests/identity-account-policy.test.mjs"
+      - "tests/identity-pairing-link.test.mjs"
       - "tests/contact-encryption.test.mjs"
       - ".github/workflows/contact-relay.yml"
   push:
     branches:
       - feature/noema-e2ee-contact-reception
+      - feature/noema-public-guest-beta
 permissions:
   contents: read
 jobs:
@@ -67,3 +73,5 @@ jobs:
           echo "Authenticated staging: anonymous calls blocked; untrusted origins refused."
       - name: Signed guest authentication smoke test (no real messages)
         run: node relay/smoke-staging.mjs
+      - name: Public guest beta CORS and owner isolation smoke test
+        run: node relay/smoke-public-guest.mjs

@@ -3,6 +3,7 @@ import {
   verifyDeviceProof, sameOrigin, isId,
 } from "./protocol.mjs";
 import { AccountRegistry } from "./account-registry.mjs";
+import {classifyBrowserOrigin,allowedGuestRoute} from "./guest-origin.mjs";
 
 const now = () => Date.now();
 const iso = () => new Date().toISOString();
@@ -111,9 +112,8 @@ export class NoemaRelayRoom {
     const session=await this.user(req);
     if (!session) return fail(401,"Authenticated device session required.");
 
-    // Account registration, pairing and revocation are a separately reviewed
-    // future protocol. Disabled in every live NOEMA staging deployment today.
-    // Never treat account ownership as the existing pilot OWNER_DEVICE_ID role.
+    // The independent account protocol remains disabled until reviewed.
+    // This cannot grant owner privileges in the existing guest-contact pilot.
     if (url.pathname==="/v1/accounts" || url.pathname.startsWith("/v1/accounts/")) {
       if (this.env.ACCOUNT_REGISTRATION_ENABLED!=="true")
         return fail(503,"Multi-user account enrollment is not activated.");
@@ -343,11 +343,20 @@ export class NoemaRelayRoom {
 export default {
   async fetch(req, env) {
     const origin=req.headers.get("Origin");
-    const allowed=String(env.APP_ORIGIN||"");
+    const role=classifyBrowserOrigin(origin,String(env.APP_ORIGIN||""),
+      String(env.GUEST_ORIGIN||""));
+    const pathname=new URL(req.url).pathname;
+    const actualMethod=req.method==="OPTIONS"
+      ?req.headers.get("Access-Control-Request-Method")||"GET"
+      :req.method;
     const headers={"Cache-Control":"no-store","Vary":"Origin",
       "Referrer-Policy":"no-referrer","X-Content-Type-Options":"nosniff"};
-    if (!allowed || (origin && !sameOrigin(origin,allowed)))
+    if (!role)
       return new Response("Origin not allowed.",{status:403,headers});
+    // Public browser origins are limited to guest-only operations. This is
+    // defense-in-depth, not a substitute for signed device authorisation.
+    if(role==="guest"&&!allowedGuestRoute(actualMethod,pathname))
+      return new Response("Guest operation not allowed.",{status:403,headers});
     if (origin) {
       headers["Access-Control-Allow-Origin"]=origin;
       headers["Access-Control-Allow-Headers"]="Authorization, Content-Type";
