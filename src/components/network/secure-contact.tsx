@@ -20,6 +20,9 @@ import {
   saveContactSecret, secretFromHash,
 } from "@/lib/network/contact-crypto";
 import {latestIncomingSequence, markIncomingRead} from "@/lib/network/contact-unread";
+import {OffsetContactMenu} from "@/components/contact/offset-contact-menu";
+import {readDisplayPreferences,type DisplayPreferences} from "@/lib/ui/display-preferences";
+import type {MenuAnchor} from "@/lib/ui/offset-menu-position";
 
 const field="min-w-0 w-full rounded-lg border border-noema-border bg-black px-3 py-2.5 text-sm text-white placeholder:text-neutral-600";
 const button="min-h-10 rounded-lg border border-noema-border bg-black/50 px-3 py-2 text-xs text-neutral-200 disabled:opacity-40";
@@ -32,6 +35,9 @@ const clientId=()=> "message-" + crypto.randomUUID().replace(/-/g,"");
 const errText=(error:unknown)=>error instanceof Error?error.message:"Unspecified network error.";
 interface DecryptedMessage extends RelayMessage { text:string; }
 type PendingGuestMessage={threadId:string;message:RelayMessage};
+type OpenContactMenu =
+  | {kind:"conversation";threadId:string;anchor:MenuAnchor}
+  | {kind:"message";threadId:string;messageId:string;anchor:MenuAnchor};
 
 export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const {agents,hydrateAgents}=useAgentStore();
@@ -45,6 +51,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
   const [mobileContactsOpen,setMobileContactsOpen]=useState(true);
+  const [contextMenu,setContextMenu]=useState<OpenContactMenu|null>(null);
+  const [displayPreferences,setDisplayPreferences]=useState<DisplayPreferences|null>(null);
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
   const [alias,setAlias]=useState("");
   const [inviteSecret,setInviteSecret]=useState("");
@@ -73,6 +81,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const readyToPoll=useRef(false);
   const ownerSectionRef=useRef(ownerSection);
   const mobileContactsRef=useRef(true);
+  const touchMenuTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const touchStart=useRef<{x:number;y:number}|null>(null);
+  const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   const receptionist=useMemo(()=>agents.find(agent=>
     normalizeAgentRoles(agent.roleAssignments).includes("primary")),[agents]);
@@ -85,6 +96,30 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   useEffect(()=>{policyRef.current=policy;},[policy]);
   useEffect(()=>{ownerSectionRef.current=ownerSection;},[ownerSection]);
   useEffect(()=>{mobileContactsRef.current=mobileContactsOpen;},[mobileContactsOpen]);
+  useEffect(()=>{
+    const refresh=()=>setDisplayPreferences(readDisplayPreferences());
+    refresh();
+    window.addEventListener("noema:display-preferences-updated",refresh);
+    window.addEventListener("storage",refresh);
+    return()=>{
+      window.removeEventListener("noema:display-preferences-updated",refresh);
+      window.removeEventListener("storage",refresh);
+    };
+  },[]);
+  useEffect(()=>{setContextMenu(null);},[selected,ownerSection,mobileContactsOpen]);
+  const clearLongPress=()=>{
+    if(touchMenuTimer.current!==null)clearTimeout(touchMenuTimer.current);
+    touchMenuTimer.current=null;
+    touchStart.current=null;
+  };
+  useEffect(()=>()=>{if(touchMenuTimer.current!==null)clearTimeout(touchMenuTimer.current);},[]);
+  const openMessageMenu=(messageId:string,anchor:MenuAnchor)=>{
+    if(!active)return;
+    setContextMenu({kind:"message",threadId:active.id,messageId,anchor});
+  };
+  const contextMessage=contextMenu?.kind==="message" && contextMenu.threadId===selected
+    ?messages.find(message=>message.id===contextMenu.messageId):undefined;
+  const closeMenu=()=>setContextMenu(null);
 
   useEffect(()=>{
     alive.current=true;
@@ -333,7 +368,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const switchThread=()=>action(async()=>{
     if(!session || !active || !ownerThread)return;
     const next=!active.receptionEnabled;
-    if(next && !window.confirm("Allow this guest conversation to receive billable AI replies to NEW messages only?"))return;
     const result=await relaySetThreadReception(session,active.id,next);
     setThreads(current=>current.map(t=>t.id===active.id?result.thread:t));
     threadsRef.current=threadsRef.current.map(t=>t.id===active.id?result.thread:t);
@@ -474,7 +508,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </section>}
       {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
         <aside aria-label="Contact list"
-          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[225px] md:flex-none"}>
+          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:flex-none"}
+          style={{width:!mobileContactsOpen||typeof window!=="undefined"&&window.innerWidth>=768?"var(--noema-contact-sidebar-width, 225px)":undefined}}>
           <div className="flex min-h-12 shrink-0 items-center justify-between gap-1 border-b border-noema-border px-3">
             <strong className="text-xs font-semibold">Contacts</strong>
             <div className="flex items-center gap-1">
