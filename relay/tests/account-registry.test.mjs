@@ -149,6 +149,10 @@ test("pairing requires active owner, correct visual code and a fresh cryptograph
   const joined=await request(room,url(id),candidate,undefined,"GET");
   assert.equal(joined.status,200);
   assert.equal(joined.data.account.id,id);
+  const candidateAccounts=await request(room,"/v1/accounts",candidate,undefined,"GET");
+  assert.equal(candidateAccounts.status,200);
+  assert.deepEqual(candidateAccounts.data.accounts.map(account=>account.id),[id]);
+  assert.deepEqual(candidateAccounts.data.memberships,[{accountId:id,role:"member"}]);
   assert.equal((await request(room,url(id,"pair-offers"),candidate,{})).status,403);
   assert.equal((await request(room,url(id,"devices"),candidate,undefined,"GET")).status,403);
 });
@@ -165,6 +169,7 @@ test("device revocation denies account access on existing authenticated bearer t
   assert.equal((await request(room,url(id,"devices/"+owner.deviceId+"/revoke"),owner,{})).status,403);
   assert.equal((await request(room,url(id,"devices/"+candidate.deviceId+"/revoke"),owner,{})).status,200);
   assert.equal((await request(room,url(id),candidate,undefined,"GET")).status,404);
+  assert.deepEqual((await request(room,"/v1/accounts",candidate,undefined,"GET")).data.accounts,[]);
   assert.equal((await request(room,url(id,"pair-offers"),candidate,{})).status,403);
   assert.equal((await request(room,url(id,"devices"),owner,undefined,"GET")).data.devices
     .find(x=>x.deviceId===candidate.deviceId).status,"revoked");
