@@ -508,8 +508,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </section>}
       {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
         <aside aria-label="Contact list"
-          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:flex-none"}
-          style={{width:!mobileContactsOpen||typeof window!=="undefined"&&window.innerWidth>=768?"var(--noema-contact-sidebar-width, 225px)":undefined}}>
+          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[var(--noema-contact-sidebar-width,225px)] md:flex-none"}
+          >
           <div className="flex min-h-12 shrink-0 items-center justify-between gap-1 border-b border-noema-border px-3">
             <strong className="text-xs font-semibold">Contacts</strong>
             <div className="flex items-center gap-1">
@@ -574,32 +574,71 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               </button>
               <p className="truncate text-xs font-medium">{ownerThread?active.guestAlias:active.ownerAlias}</p>
             </div>
-            {ownerThread?<details className="relative shrink-0">
-              <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-base text-neutral-400" aria-label="Conversation settings">⋯</summary>
-              <div className="absolute right-0 z-20 mt-1 rounded-lg border border-noema-border bg-[#191c1a] p-2 shadow-lg">
-                <button type="button" disabled={busy||!session} onClick={()=>void switchThread()}
-                  className={button+" whitespace-nowrap"}>
-                  AI Reception: {active.receptionEnabled?"On":"Off"}
-                </button>
-              </div>
-            </details>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
+            {ownerThread?<button type="button"
+              title="Conversation actions" aria-label="Conversation actions"
+              aria-haspopup="menu" aria-expanded={contextMenu?.kind==="conversation"}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-white/5 hover:text-white"
+              onClick={event=>{
+                const rect=event.currentTarget.getBoundingClientRect();
+                setContextMenu(current=>current?.kind==="conversation"?null:
+                  {kind:"conversation",threadId:active.id,anchor:{x:rect.right,y:rect.bottom}});
+              }}>
+              <Icon icon="solar:menu-dots-bold" className="text-xl" aria-hidden="true" />
+            </button>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
           </div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite"
+            onContextMenu={event=>{
+              if(event.target!==event.currentTarget)return;
+              event.preventDefault();
+              setContextMenu({kind:"conversation",threadId:active.id,
+                anchor:{x:event.clientX,y:event.clientY}});
+            }}>
             {messages.map(msg=><div key={msg.id}
-              className={"w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
+              className={"group relative w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
                 ((ownerThread?msg.sender!=="guest":msg.sender==="guest")
-                  ?"ml-auto border-noema-lime/30 bg-[#1b291c]":"border-noema-border bg-black/40")}>
-              {msg.sender==="agent"&&<p className="mb-1 text-[10px] font-semibold text-noema-violet">
+                  ?"ml-auto border-noema-lime/30 bg-[#1b291c]":"border-noema-border bg-black/40")}
+              style={{fontSize:"var(--noema-message-font-size,13px)"}}
+              onContextMenu={event=>{
+                event.preventDefault();event.stopPropagation();
+                openMessageMenu(msg.id,{x:event.clientX,y:event.clientY});
+              }}
+              onPointerDown={event=>{
+                if(event.pointerType==="mouse" || !event.isPrimary)return;
+                clearLongPress();
+                touchStart.current={x:event.clientX,y:event.clientY};
+                touchMenuTimer.current=setTimeout(()=>{
+                  touchMenuTimer.current=null;
+                  touchStart.current=null;
+                  openMessageMenu(msg.id,{x:event.clientX,y:event.clientY});
+                },displayPreferences?.longPressMs??460);
+              }}
+              onPointerMove={event=>{
+                const start=touchStart.current;
+                if(start && (Math.abs(start.x-event.clientX)>12 ||
+                  Math.abs(start.y-event.clientY)>12))clearLongPress();
+              }}
+              onPointerUp={clearLongPress} onPointerCancel={clearLongPress}
+              onPointerLeave={clearLongPress}>
+              <button type="button" aria-label="Message actions" title="Message actions" aria-haspopup="menu"
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-white/10 hover:text-white focus-visible:text-white"
+                onClick={event=>{
+                  event.stopPropagation();
+                  const rect=event.currentTarget.getBoundingClientRect();
+                  openMessageMenu(msg.id,{x:rect.right,y:rect.bottom});
+                }}>
+                <Icon icon="solar:menu-dots-bold" className="text-base" aria-hidden="true" />
+              </button>
+              {msg.sender==="agent"&&<p className="mb-1 pr-6 text-[10px] font-semibold text-noema-violet">
                 <Icon icon="solar:cpu-bolt-bold" className="mr-1 inline" aria-hidden="true" />
                 AI RECEPTION · {receptionist?.name||"NOEMA"}
               </p>}
-              <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-              <p className="mt-1 text-right text-[10px] text-neutral-600">{new Date(msg.createdAt).toLocaleTimeString()}</p>
+              <p className="whitespace-pre-wrap break-words pr-5">{msg.text}</p>
+              <p className="mt-1 text-right text-[10px] text-neutral-500">{new Date(msg.createdAt).toLocaleTimeString()}</p>
             </div>)}
             {answering&&<p className="text-xs text-noema-violet">AI processing in this owner tab…</p>}
           </div>
           <div className="flex shrink-0 items-end gap-2 border-t border-noema-border p-2">
-            <textarea className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
+            <textarea ref={composerRef} className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
               placeholder="Message…" aria-label="Message"
               onChange={e=>setDrafts(current=>({...current,[selected]:e.target.value}))} />
             <button type="button" className={primary} disabled={!draft.trim()||busy||!session}
@@ -611,5 +650,56 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         </div>
       </div>}
     </>}
+    {contextMenu && active && contextMenu.threadId===active.id && (
+      <OffsetContactMenu anchor={contextMenu.anchor}
+        label={contextMenu.kind==="message"?"Message actions":"Conversation actions"}
+        onClose={closeMenu}>
+        {contextMenu.kind==="conversation" && ownerThread && (
+          <button type="button" role="menuitem" disabled={busy||!session}
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5 disabled:opacity-40"
+            onClick={()=>{closeMenu();void switchThread();}}>
+            <Icon icon="solar:cpu-bolt-linear" className="text-base" aria-hidden="true" />
+            {active.receptionEnabled?"Disable AI Reception":"Enable AI Reception"}
+          </button>
+        )}
+        {contextMenu.kind==="message" && contextMessage && <>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{closeMenu();void navigator.clipboard.writeText(contextMessage.text).catch(e=>setError(errText(e)));}}>
+            <Icon icon="solar:copy-linear" className="text-base" aria-hidden="true" /> Copy text
+          </button>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{
+              const sender=contextMessage.sender==="guest"?active.guestAlias:
+                contextMessage.sender==="owner"?active.ownerAlias:"AI Reception";
+              const excerpt=contextMessage.text.trim().slice(0,180).replace(/\n/g,"\n> ");
+              setDrafts(current=>({...current,[active.id]:
+                "> "+sender+": "+excerpt+"\n\n"+(current[active.id]||"")}));
+              closeMenu();
+              requestAnimationFrame(()=>composerRef.current?.focus());
+            }}>
+            <Icon icon="solar:reply-linear" className="text-base" aria-hidden="true" /> Quote & reply
+          </button>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{
+              const content=contextMessage.text;
+              closeMenu();
+              if(navigator.share) {
+                void navigator.share({text:content}).catch(e=>{
+                  if(e instanceof Error && e.name==="AbortError")return;
+                  setError(errText(e));
+                });
+              } else void navigator.clipboard.writeText(content).catch(e=>setError(errText(e)));
+            }}>
+            <Icon icon="solar:share-linear" className="text-base" aria-hidden="true" /> Share text
+          </button>
+          <p className="border-t border-noema-border px-3 py-2 text-[10px] text-neutral-500">
+            {contextMessage.sender==="owner"?"Owner":contextMessage.sender==="guest"?"Guest":"AI Reception"} · {new Date(contextMessage.createdAt).toLocaleString()}
+          </p>
+        </>}
+      </OffsetContactMenu>
+    )}
   </main>;
 }
