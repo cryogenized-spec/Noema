@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="282" height="56" viewBox="0 0 282 56" role="img" aria-labelledby="name desc">
+<title id="name">NOEMA</title>
+<desc id="desc">Thin orbital signal mark and NOEMA wordmark</desc>
+<defs>
+  <linearGradient id="signal" x1="0" y1="1" x2="1" y2="0">
+    <stop offset="0" stop-color="#70243d"/>
+    <stop offset=".52" stop-color="#a78bfa"/>
+    <stop offset="1" stop-color="#b9ff66"/>
+  </linearGradient>
+</defs>
+<g fill="none" stroke-width="1.35">
+  <path d="M29 5 49 16.5v23L29 51 9 39.5v-23Z" stroke="#45434b"/>
+  <path d="M29 12 43 20v16L29 44 15 36V20Z" stroke="url(#signal)"/>
+  <path d="M16 35 29 20 42 35" stroke="#b9ff66" stroke-linecap="square" stroke-linejoin="bevel"/>
+  <path d="M29 20v-9M29 44v-9M15 28H7M51 28h-8" stroke="#a78bfa" opacity=".7"/>
+</g>
+<circle cx="29" cy="28" r="3.2" fill="#b9ff66"/>
+<path d="M63 14v27" stroke="#38363f" stroke-width="1"/>
+<text x="75" y="35" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-weight="700" font-size="28" letter-spacing="4.8" fill="#f8fafc">NOEMA</text>
+<circle cx="232" cy="30.5" r="2.1" fill="#b9ff66"/>
+<path d="M75 43h157" stroke="#8b8b92" stroke-width=".65" opacity=".45"/>
+<text x="76" y="52" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="5.4" letter-spacing="2.55" fill="#a9a7ad">COMMUNICATION / INTELLIGENCE</text>
+</svg>

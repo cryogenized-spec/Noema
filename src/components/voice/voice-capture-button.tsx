@@ -188,7 +188,7 @@ export function VoiceCaptureButton({ onTranscript, onError, className = "", comp
     >
       <span className="inline-flex items-center gap-1.5">
         <Icon icon={recording ? "solar:stop-circle-bold" : "solar:microphone-3-bold"} className="text-lg" />
-        {recording ? `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}` : transcribing ? "Transcribing…" : compact ? "Speak" : "Voice"}
+        <span className={compact ? "hidden sm:inline" : ""}>{recording ? `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}` : transcribing ? "Transcribing…" : compact ? "Speak" : "Voice"}</span>
       </span>
     </button>
   );

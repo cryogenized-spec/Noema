@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { useState } from "react";
+import { relayAvailable } from "@/lib/network/relay-client";
 
 const names = [
   "Moss Lantern",
@@ -39,6 +40,8 @@ function cleanAlias(raw: string): string {
 }
 
 export default function InviteDemoPage() {
+  // Do not let a legacy demonstration QR impersonate the real messaging
+  // flow once the encrypted relay is enabled on this PWA origin.
   const [stage, setStage] = useState<Stage>("identity");
   const [alias, setAlias] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -46,6 +49,27 @@ export default function InviteDemoPage() {
   const [localMessages, setLocalMessages] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const [copied, setCopied] = useState(false);
+
+  if (relayAvailable) return (
+    <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 p-5 text-white">
+      <span className="w-fit rounded border border-noema-gold/40 px-3 py-1 text-xs text-noema-gold">
+        DEMONSTRATION ONLY
+      </span>
+      <h1 className="text-xl font-semibold">This QR cannot deliver messages</h1>
+      <p className="text-sm leading-6 text-neutral-300">
+        You opened an older NOEMA invitation demonstration. It does not create a contact
+        or send anything to the owner. For genuine encrypted messaging, ask the owner
+        for a fresh private QR generated using <strong>New invite</strong> in the Contact inbox.
+      </p>
+      <Link href="/connect" className="rounded-lg bg-noema-lime px-4 py-3 text-center text-sm font-semibold text-black">
+        Go to encrypted Contact
+      </Link>
+      <p className="text-xs text-neutral-500">
+        The real invitation URL contains /invite/ followed by a unique token and a private key fragment.
+        Do not publish that complete link.
+      </p>
+    </main>
+  );
 
   function continueAsGuest() {
     setGuestName(cleanAlias(alias) || nextPersona());

@@ -24,6 +24,14 @@ function requestBody(payload: ProviderExecutionPayload, stream: boolean): Record
   if (payload.modelId.startsWith("gpt-4.1") && Number.isFinite(payload.generationSettings.temperature)) {
     body.temperature = Math.max(0, Math.min(2, payload.generationSettings.temperature));
   }
+  // NOEMA stores reasoning effort as a 0–10 editor slider.
+  // Map it to the documented Responses API enum; never forward the raw number.
+  const effort = payload.generationSettings.reasoning_effort;
+  if (typeof effort === "number" && Number.isFinite(effort) && /^gpt-(?:5|6)/.test(payload.modelId)) {
+    const level = effort < 1 ? "low" : effort < 3 ? "low" : effort < 5 ? "medium"
+      : effort < 7 ? "high" : effort < 9 ? "xhigh" : "max";
+    body.reasoning = { effort: level };
+  }
   return body;
 }
 async function callOpenAI(payload: ProviderExecutionPayload, stream: boolean, signal?: AbortSignal): Promise<Response> {

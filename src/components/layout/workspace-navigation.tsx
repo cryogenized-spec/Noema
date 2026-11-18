@@ -1,0 +1,101 @@
+"use client";
+
+import { Icon } from "@iconify/react";
+import Link from "next/link";
+import { useEffect } from "react";
+import type { TabKey } from "@/components/layout/bottom-tabs";
+
+const destinations: Array<{ key: TabKey; label: string; icon: string }> = [
+  { key: "chat", label: "AI Chat", icon: "solar:chat-round-dots-bold" },
+  { key: "signals", label: "Signals", icon: "solar:bolt-bold" },
+  { key: "agents", label: "AI Studio", icon: "solar:cpu-bolt-bold" },
+  { key: "organizer", label: "Organizer", icon: "solar:checklist-minimalistic-bold" },
+  { key: "settings", label: "Settings", icon: "solar:settings-bold" },
+];
+
+interface WorkspaceNavigationProps {
+  activeTab: TabKey;
+  onTabChange: (tab: TabKey) => void;
+  mobileOpen: boolean;
+  desktopOpen: boolean;
+  onClose: () => void;
+}
+
+export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, desktopOpen, onClose }: WorkspaceNavigationProps) {
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [mobileOpen, onClose]);
+
+  const invitationEntry = (compact: boolean) => (
+    <Link href="/connect" title="Encrypted contacts and invitations" aria-label={compact ? "Contacts" : undefined}
+      onClick={onClose}
+      className={`flex min-h-11 items-center rounded-xl text-noema-gold transition hover:bg-white/[0.04] ${compact ? "w-12 justify-center" : "w-full gap-3 px-3"}`}>
+      <Icon icon="solar:link-round-linear" className="text-xl" aria-hidden="true" />
+      {!compact && <span className="text-sm">Contacts / Inbox</span>}
+    </Link>
+  );
+  const renderDestinations = (compact: boolean) => destinations.map((destination) => {
+    const active = activeTab === destination.key;
+    return (
+      <button key={destination.key} type="button" title={destination.label}
+        aria-label={compact ? destination.label : undefined}
+        aria-current={active ? "page" : undefined}
+        onClick={() => { onTabChange(destination.key); onClose(); }}
+        className={`relative flex min-h-11 min-w-0 items-center rounded-xl transition-colors
+          ${compact ? "w-12 justify-center px-2" : "w-full gap-3 px-3"}
+          ${active ? "bg-white/[0.07] text-noema-lime" : "text-neutral-400 hover:bg-white/[0.04] hover:text-white"}`}>
+        {active && <span className="absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-noema-lime" />}
+        <Icon icon={destination.icon} className="shrink-0 text-xl" aria-hidden="true" />
+        {!compact && <span className="text-sm font-medium">{destination.label}</span>}
+      </button>
+    );
+  });
+
+  return (
+    <>
+      {desktopOpen && (
+        <aside className="hidden h-full w-[72px] shrink-0 border-r border-noema-border bg-[#101011] py-5 lg:flex"
+          aria-label="Workspace navigation">
+          <nav className="flex w-full flex-col items-center gap-2" aria-label="Workspace sections">
+            {renderDestinations(true)}
+            <div className="my-2 h-px w-9 bg-noema-border" aria-hidden="true" />
+            {invitationEntry(true)}
+            <Link href="/identity" onClick={onClose}
+              className="flex h-11 w-12 items-center justify-center rounded-xl text-neutral-400 hover:bg-white/[0.04] hover:text-noema-lime"
+              title="Identity & Devices" aria-label="Identity & Devices">
+              <Icon icon="solar:devices-linear" className="text-xl" aria-hidden="true" />
+            </Link>
+          </nav>
+        </aside>
+      )}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Workspace navigation">
+          <button type="button" className="absolute inset-0 bg-black/75" onClick={onClose} aria-label="Close navigation overlay" />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(86vw,278px)] flex-col border-r border-noema-border bg-[#101011] p-4 shadow-2xl"
+            aria-label="Mobile workspace navigation">
+            <div className="mb-6 flex items-center justify-between border-b border-noema-border pb-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Navigate</p>
+              <button type="button" onClick={onClose} aria-label="Close navigation"
+                className="rounded-lg border border-noema-border p-2 text-neutral-300">
+                <Icon icon="solar:close-circle-linear" className="text-lg" aria-hidden="true" />
+              </button>
+            </div>
+            <nav className="flex flex-col gap-2" aria-label="Workspace sections">
+              {renderDestinations(false)}
+              <div className="my-2 h-px w-full bg-noema-border" aria-hidden="true" />
+              {invitationEntry(false)}
+              <Link href="/identity" onClick={onClose}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-neutral-300 hover:bg-white/[0.04] hover:text-noema-lime">
+                <Icon icon="solar:devices-linear" className="text-xl" aria-hidden="true" />
+                Identity & Devices
+              </Link>
+            </nav>
+          </aside>
+        </div>
+      )}
+    </>
+  );
+}

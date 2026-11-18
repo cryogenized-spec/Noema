@@ -9,6 +9,8 @@ import type { MessagePressContext } from "@/lib/chat/context-actions";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  selfAvatar?: string;
+  selfAlias?: string;
   isContextActive?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
@@ -22,6 +24,8 @@ const MOVE_CANCEL_THRESHOLD = 12;
 
 export function MessageBubble({
   message,
+  selfAvatar = "",
+  selfAlias = "You",
   onLongPress,
   onContextActionOpen,
   onToggleSelect,
@@ -102,7 +106,7 @@ export function MessageBubble({
         </div>
       )}
       <div
-        className={`relative max-w-[88%] rounded-2xl border px-3 py-2.5 text-sm transition ${
+        className={`relative min-w-0 max-w-[88%] break-words rounded-2xl border px-3 py-2.5 text-sm transition ${
           isUser
             ? "border-noema-lime/25 bg-[#1b2517] text-white"
             : isAgent
@@ -186,6 +190,13 @@ export function MessageBubble({
           {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
+      {isUser && (
+        <div className="ml-2 mt-1 flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-noema-border bg-[#1a2118] text-xs font-semibold text-noema-lime">
+          {selfAvatar ? (
+            <Image src={selfAvatar} alt="Your avatar" width={64} height={64} className="h-full w-full object-cover" unoptimized />
+          ) : <span aria-label="You">{selfAlias.trim().slice(0, 1).toUpperCase() || "Y"}</span>}
+        </div>
+      )}
     </article>
   );
 }

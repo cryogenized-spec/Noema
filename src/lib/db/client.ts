@@ -6,6 +6,10 @@ import type { DocumentRecord } from "@/types/documents";
 import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { TaskRecord } from "@/types/tasks";
 import type { CalendarEventRecord } from "@/types/calendar";
+import type { WorkshopProfile } from "@/types/profile";
+import type { ContactKeyRecord } from "@/types/contact";
+import type { LocalIdentityDraft } from "@/types/identity";
+import type { RssArticle, RssFolder, RssSubscription } from "@/types/rss";
 
 class NoemaDatabase extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
@@ -15,6 +19,12 @@ class NoemaDatabase extends Dexie {
   attachments!: EntityTable<DocumentAttachmentRecord, "id">;
   tasks!: EntityTable<TaskRecord, "id">;
   calendarEvents!: EntityTable<CalendarEventRecord, "id">;
+  profiles!: EntityTable<WorkshopProfile, "id">;
+  contactKeys!: EntityTable<ContactKeyRecord, "id">;
+  identityDrafts!: EntityTable<LocalIdentityDraft, "id">;
+  rssSubscriptions!: EntityTable<RssSubscription, "id">;
+  rssFolders!: EntityTable<RssFolder, "id">;
+  rssArticles!: EntityTable<RssArticle, "id">;
 
   constructor() {
     super("noema-db");
@@ -123,6 +133,21 @@ class NoemaDatabase extends Dexie {
       calendarEvents:
         "++id, title, startAt, endAt, status, allDay, timezone, linkedTaskId, linkedDocumentId, sourceType, reminderEnabled, reminderAt, reminderState, recurrencePreset, updatedAt, isPinned",
     });
+
+    // Preserves existing tables while introducing the singleton local workshop profile.
+    this.version(10).stores({ profiles: "id, updatedAt" });
+
+    // RADIX-inspired RSS subscriptions and bounded offline article cache.
+    this.version(11).stores({
+      rssSubscriptions: "id, &url, folderId, updatedAt, lastFetchedAt",
+      rssFolders: "id, name",
+      rssArticles: "id, subscriptionId, publishedAt, read, starred, fetchedAt",
+    });
+    // WebCrypto non-extractable HKDF roots persist per browser, not on the relay.
+    this.version(12).stores({ contactKeys: "id, createdAt" });
+
+    // Local-only onboarding preferences, not a server account or membership.
+    this.version(13).stores({ identityDrafts: "id, updatedAt" });
   }
 }
 

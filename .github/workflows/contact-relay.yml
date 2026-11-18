@@ -1,0 +1,77 @@
+name: NOEMA secure contact relay
+on:
+  pull_request:
+    paths:
+      - "relay/**"
+      - "guest-public/**"
+      - "src/lib/network/public-guest-link.ts"
+      - "tests/guest-owner-interop.test.mjs"
+      - "tests/public-guest-link.test.mjs"
+      - "src/lib/network/**"
+      - "src/components/network/**"
+      - "src/types/contact.ts"
+      - "src/app/connect/**"
+      - "src/app/invite/**"
+      - "src/app/share/**"
+      - "src/lib/db/client.ts"
+      - "src/components/identity/**"
+      - "src/app/identity/**"
+      - "src/lib/identity/**"
+      - "src/types/identity.ts"
+      - "tests/identity-account-policy.test.mjs"
+      - "tests/identity-pairing-link.test.mjs"
+      - "tests/contact-encryption.test.mjs"
+      - ".github/workflows/contact-relay.yml"
+  push:
+    branches:
+      - feature/noema-e2ee-contact-reception
+      - feature/noema-public-guest-beta
+permissions:
+  contents: read
+jobs:
+  relay-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test relay/tests/*.test.mjs
+      - run: |
+          ! grep -r -n "api.openai.com\|Bearer.*apiKey" relay/src
+          echo "Relay contains no model provider calls or API-key forwarding."
+
+      - name: Clean install
+        run: npm ci
+      - name: TypeScript and hardening
+        run: npm run typecheck && npm run typecheck:hardening
+      - name: Lint and security gates
+        run: npm run lint && npm run security:gates
+      - name: Unit tests including browser-independent crypto
+        run: npm run test:unit
+      - name: Next.js production build
+        run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Staging registered-owner security smoke check
+        run: |
+          set -eu
+          base='https://noema-contact-relay-staging.cryogenized.workers.dev'
+          good='https://noema-contact-staging.vercel.app'
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-unauth.json -w '%{http_code}' \
+            -H "Origin: $good" "$base/v1/identity")
+          test "$status" = "401"
+          grep -q 'Authenticated device session required' /tmp/noema-unauth.json
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-wrong-origin.txt -w '%{http_code}' \
+            -H 'Origin: https://untrusted.example' "$base/v1/identity")
+          test "$status" = "403"
+          status=$(curl -sS --retry 2 --max-time 20 -o /tmp/noema-invite.json -w '%{http_code}' \
+            -X POST -H "Origin: $good" -H 'Content-Type: application/json' \
+            --data '{"keyId":"not-an-invite-id"}' "$base/v1/invites")
+          test "$status" = "401"
+          echo "Authenticated staging: anonymous calls blocked; untrusted origins refused."
+      - name: Signed guest authentication smoke test (no real messages)
+        run: node relay/smoke-staging.mjs
+      - name: Public guest beta CORS and owner isolation smoke test
+        run: node relay/smoke-public-guest.mjs
