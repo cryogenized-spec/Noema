@@ -63,6 +63,11 @@ export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, deskto
             {renderDestinations(true)}
             <div className="my-2 h-px w-9 bg-noema-border" aria-hidden="true" />
             {invitationEntry(true)}
+            <Link href="/identity" onClick={onClose}
+              className="flex h-11 w-12 items-center justify-center rounded-xl text-neutral-400 hover:bg-white/[0.04] hover:text-noema-lime"
+              title="Identity & Devices" aria-label="Identity & Devices">
+              <Icon icon="solar:devices-linear" className="text-xl" aria-hidden="true" />
+            </Link>
           </nav>
         </aside>
       )}
@@ -82,6 +87,11 @@ export function WorkspaceNavigation({ activeTab, onTabChange, mobileOpen, deskto
               {renderDestinations(false)}
               <div className="my-2 h-px w-full bg-noema-border" aria-hidden="true" />
               {invitationEntry(false)}
+              <Link href="/identity" onClick={onClose}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-sm text-neutral-300 hover:bg-white/[0.04] hover:text-noema-lime">
+                <Icon icon="solar:devices-linear" className="text-xl" aria-hidden="true" />
+                Identity & Devices
+              </Link>
             </nav>
           </aside>
         </div>

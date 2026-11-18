@@ -2,6 +2,7 @@ import {
   LIMITS, randomToken, sha256, fingerprint, alias, messageText,
   verifyDeviceProof, sameOrigin, isId,
 } from "./protocol.mjs";
+import { AccountRegistry } from "./account-registry.mjs";
 import {classifyBrowserOrigin,allowedGuestRoute} from "./guest-origin.mjs";
 
 const now = () => Date.now();
@@ -110,6 +111,17 @@ export class NoemaRelayRoom {
 
     const session=await this.user(req);
     if (!session) return fail(401,"Authenticated device session required.");
+
+    // The independent account protocol remains disabled until reviewed.
+    // This cannot grant owner privileges in the existing guest-contact pilot.
+    if (url.pathname==="/v1/accounts" || url.pathname.startsWith("/v1/accounts/")) {
+      if (this.env.ACCOUNT_REGISTRATION_ENABLED!=="true")
+        return fail(503,"Multi-user account enrollment is not activated.");
+      const registry=new AccountRegistry(this.state.storage,
+        deviceId=>this.state.storage.get("device:"+deviceId),
+        Date.now,{mailEnabled:this.env.ACCOUNT_MAILBOX_ENABLED==="true"});
+      return registry.route(req,session);
+    }
     if (req.method==="GET" && url.pathname==="/v1/identity") {
       return json({deviceId:session.deviceId,owner:this.owner(session)});
     }
