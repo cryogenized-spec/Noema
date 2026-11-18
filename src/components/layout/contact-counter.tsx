@@ -81,7 +81,7 @@ export function ContactCounter() {
   }, []);
 
   return (
-    <Link href="/connect"
+    <Link href={relayAvailable ? "/connect" : "https://noema-contact-staging.vercel.app/connect"}
       title={count === null ? "Encrypted contact inbox" : count===0 ? "No unread guest messages" : `${count} unread guest messages`}
       aria-label={count === null ? "Open encrypted contacts"
         : count===0 ? "Open encrypted contacts (no unread guest messages)"
