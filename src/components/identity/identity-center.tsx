@@ -195,6 +195,19 @@ export function IdentityCenter() {
                 Edit Workshop profile <Icon icon="solar:arrow-right-up-linear" aria-hidden="true"/>
               </Link>
             </section>
+            <section className={shell+" space-y-2"}>
+              <p className={title}>Install NOEMA</p>
+              <p className="text-xs leading-5 text-neutral-400">
+                An app-store account is not required to use the website or install the PWA.
+                On Android Chrome, open the browser menu and choose Install app or Add to Home screen.
+                On desktop, use the browser&apos;s install control when available.
+              </p>
+              <p className="text-[11px] leading-5 text-neutral-500">
+                Installation does not register a remote account or automatically import another
+                device&apos;s Workshop profile or encryption keys. Stay on the same staging origin
+                while testing; use device pairing once it has been implemented.
+              </p>
+            </section>
           </>}
           {ready && tab==="devices" && <>
             <section className={shell+" space-y-3"}>
