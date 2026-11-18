@@ -2,6 +2,7 @@ import {
   base64url,deviceFingerprint,importSecret,inviteKeyFromHash,
   deviceProofBytes,seal,open,
 } from "./crypto.mjs";
+import {createTimelineGuard,createDraftBuffer} from "./timeline.mjs";
 
 const RELAY="https://noema-contact-relay-staging.cryogenized.workers.dev";
 const DB_NAME="noema-guest-identity-v1";
@@ -21,6 +22,8 @@ const invitationToken=()=>{
 let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
 let pendingSend=null,lastRendered="";
+const timeline=createTimelineGuard(), drafts=createDraftBuffer();
+let reauth=null;
 const show=(name,yes)=>{ui[name].hidden=!yes;};
 const status=(message)=>{ui.status.textContent=message||"";ui.footer.hidden=!message;};
 const word=(v)=>String(v??"").trim().slice(0,80);
@@ -84,20 +87,26 @@ async function identity(){
   await put(record);
   return record;
 }
-async function api(path,method="GET",payload,auth=true){
+async function api(path,method="GET",payload,auth=true,retry=true){
   const response=await fetch(RELAY+path,{
     method,headers:{"Content-Type":"application/json",
       ...(auth && session?.token?{Authorization:"Bearer "+session.token}:{})},
     ...(payload!==undefined?{body:JSON.stringify(payload)}:{}),
     mode:"cors",cache:"no-store",referrerPolicy:"no-referrer",
   });
+  // Signed sessions expire; renew once without asking the visitor to reload.
+  if(auth && retry && response.status===401){
+    if(!reauth)reauth=authenticate(true).finally(()=>{reauth=null;});
+    await reauth;
+    return api(path,method,payload,auth,false);
+  }
   let result;
   try{result=await response.json();}catch{throw Error("NOEMA relay is not responding");}
   if(!response.ok)throw Error(String(result.error||"NOEMA request was rejected"));
   return result;
 }
-async function authenticate(){
-  const restored=(()=>{try{return JSON.parse(sessionStorage.getItem("noema-guest-session")||"null");}catch{return null;}})();
+async function authenticate(force=false){
+  const restored=force?null:(()=>{try{return JSON.parse(sessionStorage.getItem("noema-guest-session")||"null");}catch{return null;}})();
   if(restored?.token && restored.deviceId===device.deviceId &&
      Date.parse(restored.expiresAt)-Date.now()>60000){
     session=restored;
@@ -120,6 +129,13 @@ async function remoteThreads(){
   const answer=await api("/v1/threads");
   return answer.threads.filter(t=>t.guest===device.deviceId);
 }
+function selectThread(id){
+  if(selected)drafts.set(selected,ui.message.value);
+  selected=id;
+  timeline.select(id);
+  ui.message.value=drafts.get(id);
+  lastRendered="";
+}
 function renderTabs(){
   ui.threads.replaceChildren();
   show("threads",allThreads.length>1);
@@ -128,7 +144,7 @@ function renderTabs(){
     tab.type="button";tab.className="thread"+(thread.id===selected?" active":"");
     tab.textContent=word(thread.ownerAlias)||"Private contact";
     tab.title="Open "+tab.textContent;
-    tab.addEventListener("click",()=>{selected=thread.id;lastRendered="";renderTabs();void loadMessages();});
+    tab.addEventListener("click",()=>{selectThread(thread.id);renderTabs();void loadMessages();});
     ui.threads.append(tab);
   }
 }
@@ -153,7 +169,9 @@ async function threadSecret(thread){
 async function loadMessages(){
   const thread=allThreads.find(x=>x.id===selected);
   if(!thread)return;
+  const current=timeline.begin(thread.id);
   const result=await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages?after=0");
+  if(!current())return;
   const stamp=thread.id+":"+result.nextSeq;
   if(stamp===lastRendered)return;
   const key=await threadSecret(thread);
@@ -161,6 +179,7 @@ async function loadMessages(){
     try{return {...m,text:await open(key,thread.id,m.clientMessageId,m.content)};}
     catch{return {...m,text:"[Unable to decrypt on this device]"};}
   }));
+  if(!current())return;
   const nearBottom=ui.messages.scrollHeight-ui.messages.scrollTop-ui.messages.clientHeight<100;
   ui.messages.replaceChildren();
   for(const message of fragments){
@@ -185,7 +204,7 @@ async function refresh(){
     const next=await remoteThreads();
     allThreads=next;
     if(!selected||!next.some(x=>x.id===selected)){
-      selected=next[0]?.id||"";lastRendered="";
+      selectThread(next[0]?.id||"");
     }
     renderTabs();renderPanels();
     if(selected)await loadMessages();
@@ -211,7 +230,7 @@ async function accept(){
       store.delete("pending:"+token);
     });
     token="";inviteSecret="";history.replaceState(null,"","/");
-    selected=thread.id;lastRendered="";
+    selectThread(thread.id);
     await refresh();
     renderPanels();
     status("");
@@ -234,9 +253,12 @@ async function send(event){
     pendingSend={threadId:thread.id,text:txt,id,ciphertext};
     await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages",
       "POST",{clientMessageId:id,content:ciphertext});
-    pendingSend=null;ui.message.value="";
-    lastRendered="";
-    await loadMessages();
+    pendingSend=null;
+    if(drafts.clearIfUnchanged(thread.id,txt) && selected===thread.id)ui.message.value="";
+    if(selected===thread.id){
+      lastRendered="";
+      await loadMessages();
+    }
     status("");
   }catch(e){status(serverError(e));}
   finally{busy=false;ui.send.disabled=false;}
@@ -257,8 +279,25 @@ async function init(){
 }
 ui.accept.addEventListener("click",()=>void accept());
 ui.composer.addEventListener("submit",e=>void send(e));
+ui.message.addEventListener("input",()=>drafts.set(selected,ui.message.value));
 ui.refresh.addEventListener("click",()=>void refresh());
 window.addEventListener("focus",()=>void refresh());
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refresh();});
 window.setInterval(()=>{void refresh();},5000);
+// Mobile keyboards can resize only the visual viewport. Keep the conversation
+// and composer within its actual height instead of scrolling the whole page.
+const viewport=window.visualViewport;
+if(viewport){
+  const fitViewport=()=>{
+    if(viewport.scale!==1){
+      document.documentElement.style.removeProperty("--noema-viewport-height");
+      return;
+    }
+    document.documentElement.style.setProperty("--noema-viewport-height",
+      Math.max(1,Math.floor(viewport.height))+"px");
+  };
+  viewport.addEventListener("resize",fitViewport);
+  window.addEventListener("resize",fitViewport);
+  fitViewport();
+}
 void init();
