@@ -1,3 +1,11 @@
+# NOEMA Contact relay — current status (18 November 2026)
+
+The secure Contact relay is provisioned and owner-bound on Cloudflare staging. The separate public guest PWA is deployed at `https://noema-guest.vercel.app/`, with exact `GUEST_ORIGIN` configured and guest API routes restricted; the original `APP_ORIGIN` and `OWNER_DEVICE_ID` are preserved. The integrated source is on `main`; the protected staging branch is fast-forwarded to the same integrated source without changing its hostname or preview-only relay configuration. Signed guest and browser-origin smoke checks passed in CI; human two-device encrypted exchange and UI acceptance are still required.
+
+See [current release status](../docs/release-status.md). Older staging setup notes below are historical and should not be treated as today's deployment state. In particular, do not replace the registered owner browser/device fingerprint, disable protected owner access, enable experimental account flags or activate model reception automatically.
+
+---
+
 ## Private staging resources — 17 November 2026
 
 **Provisioned, owner-bound private staging:**
