@@ -48,7 +48,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [inviteSecret,setInviteSecret]=useState("");
   const [inviteUrl,setInviteUrl]=useState("");
   const [joined,setJoined]=useState(false);
-  const [draft,setDraft]=useState("");
+  // Unsent text belongs to a particular conversation, not the shared composer.
+  const [drafts,setDrafts]=useState<Record<string,string>>({});
+  const draft=drafts[selected]??"";
   const [note,setNote]=useState("");
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
@@ -57,7 +59,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const working=useRef(false);
   const busyAgent=useRef(false);
   const seenRef=useRef(new Set<string>());
-  const pendingSend=useRef<{threadId:string;text:string;id:string;ciphertext:string}|null>(null);
+  const pendingSend=useRef(new Map<string,{text:string;id:string;ciphertext:string}>());
+  const messageLoadSequence=useRef(0);
   const alive=useRef(true);
   const abort=useRef<AbortController|null>(null);
   const selectedRef=useRef("");
@@ -122,18 +125,22 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     threadsRef.current=response.threads;
     if((!selectedRef.current || !response.threads.some(thread=>thread.id===selectedRef.current))
         && response.threads.length && !inviteToken) {
-      const id=response.threads[0].id; setSelected(id);selectedRef.current=id;
+      const id=response.threads[0].id;
+      messageLoadSequence.current++;
+      setSelected(id);selectedRef.current=id;
     }
   },[inviteToken]);
 
   const loadMessages=useCallback(async(current:RelaySession, thread:RelayThread)=>{
+    const requestId=++messageLoadSequence.current;
     const result=await relayGetMessages(current,thread.id);
     const rendered=await Promise.all(result.messages.map(async message=>{
       try{return {...message,text:await decryptContactMessage(
         thread.keyId,thread.id,message.clientMessageId,message.content)};}
       catch{return {...message,text:"[Encrypted: this browser cannot decrypt this message]"};}
     }));
-    if(alive.current && selectedRef.current===thread.id)setMessages(rendered);
+    if(alive.current && selectedRef.current===thread.id &&
+       requestId===messageLoadSequence.current)setMessages(rendered);
     return rendered;
   },[]);
 
@@ -271,6 +278,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     });
     await saveContactSecret(response.thread.keyId,inviteSecret);
     setThreads(current=>[response.thread,...current]);
+    messageLoadSequence.current++;
     setSelected(response.thread.id);selectedRef.current=response.thread.id;
     setJoined(true);setInviteSecret("");
     window.history.replaceState(null,"","/connect");
@@ -279,17 +287,21 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const send=()=>action(async()=>{
     if(!session || !active || !draft.trim())return;
     const text=draft.trim();
-    const existing=pendingSend.current;
-    const attempt=existing?.threadId===active.id && existing.text===text ? existing : null;
+    const existing=pendingSend.current.get(active.id);
+    const attempt=existing?.text===text ? existing : null;
     const id=attempt?.id || clientId();
     // One ciphertext is generated once and reused for uncertain network retries:
     // idempotency and AES-GCM authenticated data must refer to the SAME client ID.
     const ciphertext=attempt?.ciphertext ||
       await encryptContactMessage(active.keyId,active.id,id,text);
-    pendingSend.current={threadId:active.id,text,id,ciphertext};
-    await relayPostMessage(session,active.id,ciphertext,id);
-    pendingSend.current=null;setDraft("");
-    await loadMessages(session,active);
+    const sendingThread=active.id;
+    pendingSend.current.set(sendingThread,{text,id,ciphertext});
+    await relayPostMessage(session,sendingThread,ciphertext,id);
+    pendingSend.current.delete(sendingThread);
+    // A slow send must never erase text typed in another conversation.
+    setDrafts(current=>current[sendingThread]?.trim()===text
+      ? {...current,[sendingThread]:""} : current);
+    if(selectedRef.current===sendingThread)await loadMessages(session,active);
     setNote("");
   });
   const switchGlobal=()=>action(async()=>{
@@ -351,7 +363,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     </section>
   </main>;
 
-  return <main className="mx-auto flex h-dvh min-h-0 max-w-[910px] flex-col gap-2 overflow-hidden bg-[#09090b] px-2 py-2 text-white sm:px-4 sm:py-3">
+  return <main className="relative mx-auto flex h-dvh min-h-0 max-w-[910px] flex-col gap-2 overflow-hidden bg-[#09090b] px-2 py-2 text-white sm:px-4 sm:py-3">
     <header className="flex min-h-10 shrink-0 items-center gap-2 border-b border-noema-border pb-2">
       <Link href="/" className="shrink-0 text-xs text-noema-lime" aria-label="Back to NOEMA workspace">
         <Icon icon="solar:arrow-left-linear" className="text-lg" aria-hidden="true" />
@@ -365,7 +377,10 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </select>}
       <span className="shrink-0 text-[10px] text-neutral-500">{session?isOwner?"Owner":"Guest":"Connecting…"}</span>
     </header>
-    {error&&<p role="alert" className="shrink-0 rounded-lg border border-rose-600/30 bg-rose-950/20 p-2 text-xs text-rose-200">{error}</p>}
+    {error&&<div role="alert" className="absolute bottom-20 left-3 right-3 z-30 mx-auto flex max-w-[540px] items-start gap-2 rounded-lg border border-rose-600/30 bg-[#28171a] p-2.5 text-xs text-rose-100 shadow-xl">
+      <span className="min-w-0 flex-1 break-words">{error}</span>
+      <button type="button" aria-label="Dismiss error" className="shrink-0 px-2 text-base" onClick={()=>setError("")}>×</button>
+    </div>}
     {!session&&deviceId&&<div className="shrink-0 rounded-lg border border-noema-lime/20 bg-[#101612] p-3">
       <p className="text-xs font-semibold text-noema-lime">Owner device registration</p>
       <p className="mt-1 text-[11px] leading-5 text-neutral-400">
@@ -449,9 +464,15 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         <div className="flex shrink-0 items-center gap-2">
           {threads.length>0?<select aria-label="Select conversation" value={selected} className="min-h-10 min-w-0 flex-1 truncate rounded-lg border border-noema-border bg-[#111113] px-3 text-xs text-white"
             onChange={e=>{
-              setSelected(e.target.value);selectedRef.current=e.target.value;
-              setNewThreadIds(current=>current.filter(id=>id!==e.target.value));
+              const nextId=e.target.value;
+              messageLoadSequence.current++;
+              setSelected(nextId);selectedRef.current=nextId;
+              setNewThreadIds(current=>current.filter(id=>id!==nextId));
               setMessages([]);setError("");
+              const nextThread=threads.find(thread=>thread.id===nextId);
+              if(session&&nextThread)void loadMessages(session,nextThread).catch(e=>{
+                if(alive.current&&selectedRef.current===nextId)setError(errText(e));
+              });
             }}>
             {threads.map(thread=><option value={thread.id} key={thread.id}>
               {thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}{newThreadIds.includes(thread.id)?" · NEW":""}
@@ -497,7 +518,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
           <div className="flex shrink-0 items-end gap-2 border-t border-noema-border p-2">
             <textarea className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
               placeholder="Message…" aria-label="Message"
-              onChange={e=>setDraft(e.target.value)} />
+              onChange={e=>setDrafts(current=>({...current,[selected]:e.target.value}))} />
             <button type="button" className={primary} disabled={!draft.trim()||busy||!session}
               onClick={()=>void send()}>Send</button>
           </div>
