@@ -20,7 +20,7 @@ test("Contact inbox uses a scrollable list on desktop and a single-view chat on 
   assert.match(contact,/role="listitem"/);
   assert.match(contact,/aria-label="Back to contacts"/);
   assert.match(contact,/mobileContactsRef\.current=true/);
-  assert.match(contact,/md:flex md:w-\[225px\]/);
+  assert.match(contact,/md:flex md:w-\[var\(--noema-contact-sidebar-width\)\]/);
   assert.doesNotMatch(contact,/aria-label="Select conversation"/);
   assert.match(contact,/!mobileContactsRef\.current/,"mobile list must not mark hidden thread as read");
 });
