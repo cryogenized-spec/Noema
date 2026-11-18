@@ -31,7 +31,7 @@ export default function ContactBridgePage() {
   return (
     <main className="min-h-dvh bg-noema-midnight px-3 pb-9 pt-4 text-white sm:px-6">
       <div className="mx-auto max-w-[680px] space-y-4">
-        <header className="flex items-center justify-between gap-3 border-b border-noema-border pb-4">
+        <header className="flex items-center justify-between gap-3 border-b border-noema-border pb-4 pr-14 sm:pr-0">
           <Link href="/" className="flex items-center gap-2 text-sm text-neutral-300 hover:text-noema-lime">
             <Icon icon="solar:arrow-left-linear" aria-hidden="true" /> Workspace
           </Link>
