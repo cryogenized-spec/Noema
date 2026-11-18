@@ -9,7 +9,7 @@ const STORE="entries";
 const byId=(id)=>document.getElementById(id);
 const ui=Object.fromEntries([
   "threads","onboarding","empty","chat","alias","accept","recipient","messages",
-  "composer","message","send","status","refresh","invite-title","invite-description",
+  "composer","message","send","status","footer","refresh","invite-title","invite-description",
 ].map(k=>[k,byId(k)]));
 
 const invitationToken=()=>{
@@ -22,7 +22,7 @@ let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
 let pendingSend=null,lastRendered="";
 const show=(name,yes)=>{ui[name].hidden=!yes;};
-const status=(message)=>{ui.status.textContent=message||"";};
+const status=(message)=>{ui.status.textContent=message||"";ui.footer.hidden=!message;};
 const word=(v)=>String(v??"").trim().slice(0,80);
 const serverError=(value)=>value instanceof Error?value.message:"Cannot connect to NOEMA";
 const validID=(v)=>typeof v==="string"&&/^[A-Za-z0-9_-]{12,90}$/.test(v);
@@ -123,7 +123,7 @@ async function remoteThreads(){
 }
 function renderTabs(){
   ui.threads.replaceChildren();
-  show("threads",allThreads.length>0);
+  show("threads",allThreads.length>1);
   for(const thread of allThreads){
     const tab=document.createElement("button");
     tab.type="button";tab.className="thread"+(thread.id===selected?" active":"");
@@ -211,7 +211,7 @@ async function accept(){
     selected=thread.id;lastRendered="";
     await refresh();
     renderPanels();
-    status("You're connected.");
+    status("");
   }catch(e){status(serverError(e));}
   finally{busy=false;renderPanels();}
 }
@@ -234,7 +234,7 @@ async function send(event){
     pendingSend=null;ui.message.value="";
     lastRendered="";
     await loadMessages();
-    status("Sent");
+    status("");
   }catch(e){status(serverError(e));}
   finally{busy=false;ui.send.disabled=false;}
 }
