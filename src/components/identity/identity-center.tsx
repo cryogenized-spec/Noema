@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { db } from "@/lib/db/client";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
+import { AccountEnrollmentPanel } from "@/components/identity/account-enrollment-panel";
+import { accountEnrollmentAvailable } from "@/lib/network/account-client";
 import { getOrCreateDeviceIdentity, type DeviceIdentity } from "@/lib/security/device-identity";
 import { ensureRelaySession, relayAvailable, relayGetIdentity } from "@/lib/network/relay-client";
 import { normalizeIdentityDraft, validHandle } from "@/lib/identity/account-policy";
@@ -195,6 +197,7 @@ export function IdentityCenter() {
                 Edit Workshop profile <Icon icon="solar:arrow-right-up-linear" aria-hidden="true"/>
               </Link>
             </section>
+            {accountEnrollmentAvailable && <AccountEnrollmentPanel draft={draft} />}
             <section className={shell+" space-y-2"}>
               <p className={title}>Install NOEMA</p>
               <p className="text-xs leading-5 text-neutral-400">
@@ -265,6 +268,10 @@ export function IdentityCenter() {
                 onClick={()=>void verify()} className={outline+" w-full"}>
                 {verifying?"Verifying signed device…":"Check relay identity"}
               </button>
+              {accountEnrollmentAvailable && <p className="text-[11px] leading-5 text-neutral-400">
+                For approved account linking, open the Account tab and use the separate pairing section.
+                Scanning the public device ID QR above is not an authorisation step.
+              </p>}
               <p className="text-sm font-semibold">
                 {verification==="unchecked"?"Not checked":verification==="owner"?"Staging messaging owner":
                   verification==="guest"?"Authenticated guest device":"Could not verify"}
