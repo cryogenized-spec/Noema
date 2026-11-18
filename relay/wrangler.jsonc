@@ -1,0 +1,14 @@
+{
+  "name": "noema-contact-relay-staging",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-17",
+  "durable_objects": {
+    "bindings": [{ "name": "NOEMA_ROOM", "class_name": "NoemaRelayRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NoemaRelayRoom"] }],
+  "vars": {
+    "APP_ORIGIN": "https://noema-contact-staging.vercel.app",
+    "GUEST_ORIGIN": "https://noema-guest.vercel.app",
+    "OWNER_DEVICE_ID": ""
+  }
+}

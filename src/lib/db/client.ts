@@ -7,6 +7,7 @@ import type { DocumentAttachmentRecord } from "@/types/attachments";
 import type { TaskRecord } from "@/types/tasks";
 import type { CalendarEventRecord } from "@/types/calendar";
 import type { WorkshopProfile } from "@/types/profile";
+import type { ContactKeyRecord } from "@/types/contact";
 import type { RssArticle, RssFolder, RssSubscription } from "@/types/rss";
 
 class NoemaDatabase extends Dexie {
@@ -18,6 +19,7 @@ class NoemaDatabase extends Dexie {
   tasks!: EntityTable<TaskRecord, "id">;
   calendarEvents!: EntityTable<CalendarEventRecord, "id">;
   profiles!: EntityTable<WorkshopProfile, "id">;
+  contactKeys!: EntityTable<ContactKeyRecord, "id">;
   rssSubscriptions!: EntityTable<RssSubscription, "id">;
   rssFolders!: EntityTable<RssFolder, "id">;
   rssArticles!: EntityTable<RssArticle, "id">;
@@ -139,6 +141,8 @@ class NoemaDatabase extends Dexie {
       rssFolders: "id, name",
       rssArticles: "id, subscriptionId, publishedAt, read, starred, fetchedAt",
     });
+    // WebCrypto non-extractable HKDF roots persist per browser, not on the relay.
+    this.version(12).stores({ contactKeys: "id, createdAt" });
   }
 }
 

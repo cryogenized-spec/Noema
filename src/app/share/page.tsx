@@ -7,6 +7,7 @@ import { Icon } from "@iconify/react";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
 import { AGENT_ROLE_DEFINITIONS, normalizeAgentRoles } from "@/lib/agents/role-routing";
 import { useAgentStore } from "@/store/agent-store";
+import { relayAvailable } from "@/lib/network/relay-client";
 
 const defaultMessage = "Here's NOEMA's anonymous chat demonstration. Live invitations and AI replies are still being built.";
 
@@ -54,20 +55,40 @@ export default function ContactBridgePage() {
             <Icon icon="solar:arrow-left-linear" aria-hidden="true" /> Workspace
           </Link>
           <strong className="text-sm tracking-wider">Contact bridge</strong>
-          <span className="rounded-md border border-noema-gold/40 px-2 py-1 text-[10px] text-noema-gold">DEMO ONLY</span>
+          <span className="rounded-md border border-noema-gold/40 px-2 py-1 text-[10px] text-noema-gold">{relayAvailable ? "CONTACT HUB" : "DEMO ONLY"}</span>
         </header>
 
         <section className="rounded-xl border border-noema-gold/30 bg-[#1c1711] p-4">
-          <h1 className="text-lg font-semibold">Share a NOEMA conversation</h1>
+          <h1 className="text-lg font-semibold">{relayAvailable ? "Your encrypted NOEMA contacts" : "Chat demonstration"}</h1>
           <p className="mt-2 text-xs leading-5 text-neutral-300">
-            This is a contact-sharing prototype. The link and QR below open the anonymous guest-chat demonstration only.
-            They do not invite a real contact, notify you, deliver messages or activate an AI agent. Protected previews may also require Vercel login.
+            {relayAvailable
+              ? "Real contact invitations and new conversations live in the encrypted Contact inbox. Select New invite there to get a working QR; the older demonstration QR is intentionally hidden so it cannot be mistaken for message delivery."
+              : "This local demonstration cannot deliver messages. An encrypted contact relay must be configured before real invitations are available."}
           </p>
         </section>
 
-        <section className="space-y-4 rounded-xl border border-noema-border bg-[#111113] p-4">
+        <section className="space-y-3 rounded-xl border border-noema-lime/30 bg-[#101712] p-4">
+          <h2 className="text-sm font-semibold text-noema-lime">Encrypted contact bridge · new</h2>
+          <p className="text-xs leading-5 text-neutral-300">
+            The real contact interface now supports signed device identity, one-use invitations,
+            encrypted guest messages, and separately approved Reception agent replies with daily limits.
+            Use the Contact inbox for live invitations and conversations. The owner must be signed in on the approved staging browser, and the relay must be configured.
+          </p>
+          <Link href="/connect" className="flex min-h-11 items-center justify-center rounded-lg bg-noema-lime px-3 text-sm font-semibold text-black">
+            {relayAvailable ? "Open inbox / create real QR" : "Open encrypted contact setup"}
+          </Link>
+          {relayAvailable && <p className="text-[11px] text-noema-lime">
+            Only an invitation made with New invite opens an actual encrypted conversation.
+            Messages are received in the Contact inbox—not in the local AI Chat tab.
+          </p>}
+          {!relayAvailable && <p className="text-[11px] text-noema-gold">
+            Cloudflare relay is not configured. The demonstration below is local-only.
+          </p>}
+        </section>
+
+        {!relayAvailable && <section className="space-y-4 rounded-xl border border-noema-border bg-[#111113] p-4">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-noema-lime">Invitation preview</h2>
+            <h2 className="text-sm font-semibold text-noema-lime">Local demonstration QR</h2>
             <span className="text-[11px] text-neutral-500">HTTPS · no external QR service</span>
           </div>
           {url && <ContactQrCode value={url} />}
@@ -104,7 +125,7 @@ export default function ContactBridgePage() {
             Short contact codes and revocable invitation QR links need the authenticated Cloudflare routing service.
             We will not create misleading permanent codes or embed raw private keys in QR codes.
           </p>
-        </section>
+        </section>}
 
         <section className="space-y-3 rounded-xl border border-noema-border bg-[#111113] p-4">
           <div>
@@ -135,8 +156,9 @@ export default function ContactBridgePage() {
             </div>)}
           </div>
           <p className="text-xs leading-5 text-neutral-400">
-            Eventually the Cloudflare contact bridge can route a guest message to the red reception agent,
-            but only when authenticated messaging, owner consent, billing limits and per-conversation permissions exist.
+            The encrypted Contact inbox handles actual guest messages and owner-only invitations.
+            AI Reception stays off until you separately enable it globally and for each conversation.
+            The older preview remains isolated and cannot deliver messages.
           </p>
         </section>
       </div>

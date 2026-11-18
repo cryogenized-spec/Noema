@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Icon } from "@iconify/react";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/db/client";
+import { ContactCounter } from "@/components/layout/contact-counter";
 
 interface TopBarProps {
   onMenuToggle: () => void;
@@ -50,6 +51,7 @@ export function TopBar({ onMenuToggle, mobileMenuOpen, desktopRailOpen }: TopBar
           alt="NOEMA — Communication / Intelligence" unoptimized
           className="h-[48px] w-auto max-w-[min(64vw,240px)] object-contain object-left" />
       </Link>
+      <ContactCounter />
       <Link href="/profile" aria-label="Open your workshop profile" title="Your profile"
         className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-noema-border bg-[#171719] text-noema-lime transition hover:border-noema-lime">
         {avatarImage ? <Image src={avatarImage} alt="" width={80} height={80} unoptimized className="h-full w-full object-cover" />
