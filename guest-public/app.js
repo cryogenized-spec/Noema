@@ -13,8 +13,10 @@ const ui=Object.fromEntries([
 ].map(k=>[k,byId(k)]));
 
 const invitationToken=()=>{
-  const match=/^\/invite\/([A-Za-z0-9_-]{12,90})\/?$/.exec(window.location.pathname);
-  return match?.[1]||"";
+  // Invitation token and AES key travel in the URL fragment only: never in
+  // Vercel request paths, web access logs, or HTTP referrer headers.
+  const candidate=new URLSearchParams(window.location.hash.replace(/^#/,"")).get("invite")||"";
+  return /^[A-Za-z0-9_-]{12,90}$/.test(candidate)?candidate:"";
 };
 let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
