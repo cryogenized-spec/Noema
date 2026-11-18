@@ -32,6 +32,18 @@ The next layer is now implemented **behind two separate switches**:
 
 **Production limitations:** This code is not an independently audited multi-user identity service. It uses the staging Durable Object storage abstraction for policy tests; full production deployment requires account-specific Durable Object routing, cross-instance unique handle reservation, challenge expiry/garbage collection, audit trails, rate limiting that cannot be bypassed by rotating device keys, secure backups, independent encryption key transfer, revocation key rotation, and a stable non-Vercel-authenticated user onboarding domain. Neither switch should be enabled before those are addressed and physical two-device acceptance tests are performed.
 
+## Phase 2 — disabled account-scoped ciphertext mailbox prototype
+
+A separate `relay/src/account-mailbox.mjs` module now models **account-scoped, encrypted-envelope-only message storage**. It never decrypts or processes message contents and does not use the old `/v1/threads` conversation namespace. Calls are routed only through the account registry and require an authenticated signed-device session plus *active* account membership. Message writes re-check that membership inside their storage transaction, which also handles monotonic sequence numbers, idempotent client-message IDs and per-account quota counters. A revoked device cannot read the mailbox or submit new messages with its previously issued session.
+
+Safety/abuse limits for this proof of concept: at most **40 new messages per account per UTC day**, **240 retained messages per account total**, and **50 messages per paginated read**, with validated cursors. An exhausted mailbox returns a refusal instead of growing without limit. These limits are staging defaults, not a practical production retention solution; actual retention/GC, operational monitoring and fair abuse limits remain unresolved. The transport currently accepts only `enc1`-formatted encrypted payloads and checks shape/length but **cannot verify that a payload was encrypted correctly**.
+
+**Third independent switch:** Cloudflare `ACCOUNT_MAILBOX_ENABLED` must be exactly `"true"` in addition to `ACCOUNT_REGISTRATION_ENABLED`. The PWA has `NEXT_PUBLIC_NOEMA_ACCOUNT_MAIL_ENABLED` in addition to the existing account enrollment gate. **All four switches are off on the current staging deployment.** `src/lib/network/account-mailbox-client.ts` supplies a typed, ciphertext-only API but deliberately has no chat screen or generic plaintext-sending button.
+
+Important caveat: logical account-specific keys in a single storage instance are **not physical tenant isolation**. Production must route each account to its own Durable Object or otherwise independently enforce isolation, unique handle allocation, deletion and quotas; this module should not be publicly activated by flipping feature flags. Similarly, devices approved for membership **still cannot decrypt each other's messages** until authenticated recipient-specific encryption key exchange, secure key recovery and revocation rotation are implemented and audited.
+
+Tests in `relay/tests/account-registry.test.mjs` and `relay/tests/account-mailbox.test.mjs` cover all three server feature gates, ciphertext-only writes, signed membership checks, cross-account denial, revocation using old sessions, idempotence, conflict detection, storage and per-day ceilings, and paginated read cursors. All tests use in-memory storage—**no real messages, keys or account records are created by CI**.
+
 ## Proposed server identity schema (not deployed)
 
 ```ts
