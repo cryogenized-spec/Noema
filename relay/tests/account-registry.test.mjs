@@ -187,3 +187,72 @@ test("account namespaces never expose another owner's account or membership",asy
   assert.equal((await request(room,url(id2,"pair-offers"),owner,{})).status,403);
   assert.equal((await request(room,url(id1,"pair-requests"),candidate,{token:"unguessable-not-a-real-token-000"})).status,410);
 });
+
+
+test("new account mailbox stays disabled even when account enrollment is enabled",async()=>{
+  const {room,owner,env}=await setup();
+  const acct=await create(room,owner);
+  const id=acct.data.account.id;
+  const path=url(id,"mail/messages");
+  const response=await request(room,path,owner,undefined,"GET");
+  assert.equal(response.status,503);
+  assert.equal(response.data.error,"Account mailbox is not activated.");
+  env.ACCOUNT_MAILBOX_ENABLED="false";
+  assert.equal((await request(room,path,owner,{content:"enc1.fake.fake",clientMessageId:"id-001234567891"})).status,503);
+});
+
+test("future ciphertext mailbox is scoped to signed account membership; no cross-account reads or plaintext",async()=>{
+  const {room,owner,outsider,env,storage}=await setup();
+  env.ACCOUNT_MAILBOX_ENABLED="true";
+  const a=await create(room,owner,"my_account");
+  const b=await create(room,outsider,"other_account");
+  assert.equal(a.status,201);assert.equal(b.status,201);
+  const idA=a.data.account.id,idB=b.data.account.id;
+  const inboxA=url(idA,"mail/messages");
+  const inboxB=url(idB,"mail/messages");
+  const encrypted="enc1."+"A".repeat(16)+"."+"B".repeat(36);
+  const body={clientMessageId:"mail-message-0012345678",content:encrypted};
+  assert.equal((await request(room,inboxA,owner,{...body,content:"secret plaintext"})).status,400);
+  assert.equal((await request(room,inboxA,outsider,body)).status,404);
+  assert.equal((await request(room,inboxB,owner,body)).status,404);
+  assert.equal((await request(room,inboxA,outsider,undefined,"GET")).status,404);
+  const sent=await request(room,inboxA,owner,body);
+  assert.equal(sent.status,201);
+  assert.equal(sent.data.message.senderDeviceId,owner.deviceId);
+  assert.equal(sent.data.message.status,"stored");
+  const repeat=await request(room,inboxA,owner,body);
+  assert.equal(repeat.status,200);
+  assert.equal(repeat.data.replayed,true);
+  assert.equal(repeat.data.message.seq,sent.data.message.seq);
+  assert.equal((await request(room,inboxA,owner,
+    {...body,content:"enc1."+"C".repeat(16)+"."+"D".repeat(36)})).status,409);
+  const read=await request(room,inboxA+"?after=0",owner,undefined,"GET");
+  assert.equal(read.status,200);
+  assert.equal(read.data.nextSeq,1);
+  assert.equal(read.data.messages.length,1);
+  assert.equal(read.data.messages[0].content,encrypted);
+  assert.equal((await request(room,inboxA+"?after=bad",owner,undefined,"GET")).status,400);
+  assert.equal((await request(room,inboxB,outsider,undefined,"GET")).data.messages.length,0);
+  const stored=[...storage.data.values()].map(v=>JSON.stringify(v)).join("\n");
+  assert.equal(stored.includes("secret plaintext"),false);
+});
+
+test("a revoked signed member loses account mailbox read/write immediately, without invalidating unrelated accounts",async()=>{
+  const {room,owner,candidate,id,requested,env}=await pendingSetup();
+  env.ACCOUNT_MAILBOX_ENABLED="true";
+  const pairingId=requested.data.requestId;
+  const challenge=await request(room,url(id,"pair-requests/"+pairingId+"/challenge"),owner,{});
+  const proof=await sign(owner,challenge.data.challenge);
+  assert.equal((await request(room,url(id,"pair-requests/"+pairingId+"/approve"),owner,
+    {verificationCode:requested.data.verificationCode,proof})).status,200);
+  const path=url(id,"mail/messages");
+  const encrypted={clientMessageId:"candidate-message-1234567",content:"enc1."+"B".repeat(16)+"."+"C".repeat(36)};
+  const posted=await request(room,path,candidate,encrypted);
+  assert.equal(posted.status,201);
+  const ownerInbox=await request(room,path,owner,undefined,"GET");
+  assert.equal(ownerInbox.data.messages[0].senderDeviceId,candidate.deviceId);
+  assert.equal((await request(room,url(id,"devices/"+candidate.deviceId+"/revoke"),owner,{})).status,200);
+  assert.equal((await request(room,path,candidate,undefined,"GET")).status,404);
+  assert.equal((await request(room,path,candidate,{...encrypted,clientMessageId:"new-message-123456789"})).status,404);
+  assert.equal((await request(room,path,owner,undefined,"GET")).data.messages.length,1);
+});
