@@ -35,7 +35,10 @@ async function main(){
       headers:{"Origin":GUEST,"Content-Type":"application/json",
         ...(token?{"Authorization":"Bearer "+token}:{})},
       body:JSON.stringify(payload),signal:AbortSignal.timeout(16000)});
-    return {status:result.status,value:await result.json()};
+    const raw=await result.text();
+    let value;
+    try{value=JSON.parse(raw);}catch{value={error:raw};}
+    return {status:result.status,value};
   }
   const challenge=await post("/v1/auth/challenge",{deviceId,publicJwk});
   assert.equal(challenge.status,200,"Guest challenge should be permitted");
