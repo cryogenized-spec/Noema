@@ -1,4 +1,12 @@
-# Noema (Vertical Slice v1)
+# NOEMA — chat-first PWA and encrypted Contact alpha
+
+**Current project status (18 November 2026):** Noema now includes an integrated chat-first PWA, private encrypted Contact pilot, a public guest-only invitation app, local AI Studio/Workshop, and security hardening. The protected owner staging and public guest applications are separate deployments. Account registration and multi-device mailbox provisioning remain disabled.
+
+Read [the current integration, deployment and acceptance status](docs/release-status.md) before changing production settings or the owner-bound Cloudflare Worker.
+
+---
+
+## Historical notes: Vertical Slice v1
 
 Noema is a calm, local-first communication and intelligence app for power users.
 
