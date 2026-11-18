@@ -372,7 +372,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   </main>;
 
   return <main className="relative mx-auto flex h-dvh min-h-0 max-w-[910px] flex-col gap-2 overflow-hidden bg-[#09090b] px-2 py-2 text-white sm:px-4 sm:py-3">
-    <header className="flex min-h-10 shrink-0 items-center gap-2 border-b border-noema-border pb-2">
+    <header className="flex min-h-10 shrink-0 items-center gap-2 border-b border-noema-border pb-2 pr-12 sm:pr-14">
       <Link href="/" className="shrink-0 text-xs text-noema-lime" aria-label="Back to NOEMA workspace">
         <Icon icon="solar:arrow-left-linear" className="text-lg" aria-hidden="true" />
       </Link>
