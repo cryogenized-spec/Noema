@@ -7,6 +7,7 @@
 import {
   alias, isId, randomToken, sha256, verifyDeviceProof, sameOrigin,
 } from "./protocol.mjs";
+import {AccountMailbox} from "./account-mailbox.mjs";
 
 const lifetime = { offer: 5 * 60_000, request: 10 * 60_000, proof: 2 * 60_000 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -50,10 +51,11 @@ const parseJSON = async (request) => {
  * Client UI claims such as 'role=owner' and 'approved=true' are ignored.
  */
 export class AccountRegistry {
-  constructor(storage, getDeviceKey, clock=Date.now) {
+  constructor(storage, getDeviceKey, clock=Date.now, features={}) {
     this.storage=storage;
     this.getDeviceKey=getDeviceKey;
     this.clock=clock;
+    this.features={mailEnabled:features.mailEnabled===true};
   }
   async membership(accountId,deviceId,role="member") {
     const account=await this.storage.get(key.account(accountId));
@@ -78,6 +80,15 @@ export class AccountRegistry {
     if(!endpoint)return reject(404,"Unknown account action.");
     const accountId=endpoint[1],rest=endpoint[2]||"";
     if(method==="GET"&&rest==="")return this.getAccount(session,accountId);
+    if(rest==="mail/messages") {
+      // Third independent gate: no account mailbox can be enabled by merely
+      // switching on registration, and pilot /v1/threads are unaffected.
+      if(!this.features.mailEnabled)
+        return reject(503,"Account mailbox is not activated.");
+      const mailbox=new AccountMailbox(this.storage,
+        (id,deviceId)=>this.membership(id,deviceId),this.clock);
+      return mailbox.route(request,session,accountId,"messages",body);
+    }
     if(method==="GET"&&rest==="devices")return this.devices(session,accountId);
     if(method==="POST"&&rest==="pair-offers")return this.offer(session,accountId);
     if(method==="POST"&&rest==="pair-requests")return this.requestPair(session,accountId,body);
