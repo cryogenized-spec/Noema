@@ -2,6 +2,8 @@ import type { ProviderId } from "@/types/providers";
 
 export type AgentAvatarShape = "square" | "circle" | "portrait";
 export type AgentStreamingMode = "stream" | "chunked" | "oneshot";
+export type AgentRole = "primary" | "organizer" | "feed" | "channeler" | "workbench" | "media";
+export type AgentGuestVisibility = "private" | "invited";
 
 export type AgentFontFamily =
   | "inter"
@@ -28,6 +30,10 @@ export interface AgentProfile {
   description?: string;
   avatarImage?: string;
   avatarShape: AgentAvatarShape;
+  /** Exclusive local role assignments; not a grant to use an API or tool. */
+  roleAssignments?: AgentRole[];
+  /** Guest-facing policy draft only, awaiting secure messaging rollout. */
+  guestVisibility?: AgentGuestVisibility;
   accentColor: string;
   fontFamily: AgentFontFamily;
   fontColor: string;
