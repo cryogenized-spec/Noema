@@ -44,6 +44,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [ownerSection,setOwnerSection]=useState<"inbox"|"invites"|"reception">("inbox");
   const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
+  const [mobileContactsOpen,setMobileContactsOpen]=useState(true);
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
   const [alias,setAlias]=useState("");
   const [inviteSecret,setInviteSecret]=useState("");
@@ -71,6 +72,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const policyRef=useRef<ReceptionPolicy|null>(null);
   const readyToPoll=useRef(false);
   const ownerSectionRef=useRef(ownerSection);
+  const mobileContactsRef=useRef(true);
 
   const receptionist=useMemo(()=>agents.find(agent=>
     normalizeAgentRoles(agent.roleAssignments).includes("primary")),[agents]);
@@ -82,6 +84,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   useEffect(()=>{threadsRef.current=threads;},[threads]);
   useEffect(()=>{policyRef.current=policy;},[policy]);
   useEffect(()=>{ownerSectionRef.current=ownerSection;},[ownerSection]);
+  useEffect(()=>{mobileContactsRef.current=mobileContactsOpen;},[mobileContactsOpen]);
 
   useEffect(()=>{
     alive.current=true;
@@ -146,7 +149,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
        requestId===messageLoadSequence.current) {
       setMessages(rendered);
       if(thread.owner===current.deviceId && ownerSectionRef.current==="inbox" &&
-         document.visibilityState==="visible")
+         document.visibilityState==="visible" &&
+         (!window.matchMedia("(max-width: 767px)").matches || !mobileContactsRef.current))
         markIncomingRead(current.deviceId,thread.id,latestIncomingSequence(result.messages));
     }
     return rendered;
@@ -468,37 +472,73 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
           </div>
         </div>}
       </section>}
-      {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-        <div className="flex shrink-0 items-center gap-2">
-          {threads.length>0?<select aria-label="Select conversation" value={selected} className="min-h-10 min-w-0 flex-1 truncate rounded-lg border border-noema-border bg-[#111113] px-3 text-xs text-white"
-            onChange={e=>{
-              const nextId=e.target.value;
-              messageLoadSequence.current++;
-              setSelected(nextId);selectedRef.current=nextId;
-              setNewThreadIds(current=>current.filter(id=>id!==nextId));
-              setMessages([]);setError("");
-              const nextThread=threads.find(thread=>thread.id===nextId);
-              if(session&&nextThread)void loadMessages(session,nextThread).catch(e=>{
-                if(alive.current&&selectedRef.current===nextId)setError(errText(e));
-              });
-            }}>
-            {threads.map(thread=><option value={thread.id} key={thread.id}>
-              {thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias}{newThreadIds.includes(thread.id)?" · NEW":""}
-            </option>)}
-          </select>:<span className="min-w-0 flex-1 text-xs text-neutral-500">No conversations</span>}
-          {isOwner&&<button type="button" title="Create invitation" aria-label="Create invitation" className={button+" px-3"}
-            onClick={()=>setOwnerSection("invites")}>
-            <Icon icon="solar:user-plus-linear" className="text-lg" aria-hidden="true" />
-          </button>}
-          <button type="button" title="Refresh" disabled={!session}
-            onClick={()=>{if(session)void receive(session);}}
-            className={button+" px-3"} aria-label="Refresh conversations">
-            <Icon icon="solar:refresh-linear" className="text-lg" aria-hidden="true" />
-          </button>
-        </div>
+      {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
+        <aside aria-label="Contact list"
+          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[225px] md:flex-none"}>
+          <div className="flex min-h-12 shrink-0 items-center justify-between gap-1 border-b border-noema-border px-3">
+            <strong className="text-xs font-semibold">Contacts</strong>
+            <div className="flex items-center gap-1">
+              {isOwner&&<button type="button" title="Invite contact" aria-label="Invite contact"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/5 hover:text-white"
+                onClick={()=>setOwnerSection("invites")}>
+                <Icon icon="solar:user-plus-linear" className="text-lg" aria-hidden="true" />
+              </button>}
+              <button type="button" title="Refresh contacts" aria-label="Refresh contacts" disabled={!session}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/5 hover:text-white disabled:opacity-40"
+                onClick={()=>{if(session)void receive(session);}}>
+                <Icon icon="solar:refresh-linear" className="text-lg" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5" role="list">
+            {threads.length===0&&<p className="px-2 py-4 text-xs text-neutral-500">No conversations yet.</p>}
+            {threads.map(thread=>{
+              const name=thread.owner===session?.deviceId?thread.guestAlias:thread.ownerAlias;
+              const activeContact=thread.id===selected;
+              const newContact=newThreadIds.includes(thread.id);
+              return <div role="listitem" key={thread.id}>
+                <button type="button" aria-current={activeContact?"true":undefined}
+                  aria-label={"Open conversation with "+name}
+                  onClick={()=>{
+                    const nextId=thread.id;
+                    messageLoadSequence.current++;
+                    setSelected(nextId);selectedRef.current=nextId;
+                    setNewThreadIds(current=>current.filter(id=>id!==nextId));
+                    setMessages([]);setError("");
+                    mobileContactsRef.current=false;
+                    setMobileContactsOpen(false);
+                    if(session)void loadMessages(session,thread).catch(e=>{
+                      if(alive.current&&selectedRef.current===nextId)setError(errText(e));
+                    });
+                  }}
+                  className={"flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left transition-colors "+
+                    (activeContact?"bg-[#222825] text-noema-lime":"text-neutral-300 hover:bg-white/[0.05]")}>
+                  <span aria-hidden="true" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-noema-border bg-[#1b211e] text-sm font-semibold">
+                    {(name.trim().slice(0,1)||"·").toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{name}</span>
+                    <span className="block truncate text-[11px] text-neutral-500">
+                      {newContact?"New contact":thread.updatedAt?new Date(thread.updatedAt).toLocaleDateString():"Conversation"}
+                    </span>
+                  </span>
+                  {newContact&&<span aria-label="New contact" className="h-2 w-2 shrink-0 rounded-full bg-noema-lime" />}
+                </button>
+              </div>;
+            })}
+          </div>
+        </aside>
+        <div className={(mobileContactsOpen?"hidden":"flex")+" min-h-0 min-w-0 flex-1 flex-col md:flex"}>
         {active?<section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113]">
-          <div className="flex min-h-9 shrink-0 items-center justify-between gap-2 border-b border-noema-border px-3 py-1.5">
-            <p className="truncate text-xs font-medium">{ownerThread?active.guestAlias:active.ownerAlias}</p>
+          <div className="flex min-h-10 shrink-0 items-center justify-between gap-2 border-b border-noema-border px-3 py-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <button type="button" aria-label="Back to contacts"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-300 hover:bg-white/5 md:hidden"
+                onClick={()=>{mobileContactsRef.current=true;setMobileContactsOpen(true);}}>
+                <Icon icon="solar:arrow-left-linear" className="text-lg" aria-hidden="true" />
+              </button>
+              <p className="truncate text-xs font-medium">{ownerThread?active.guestAlias:active.ownerAlias}</p>
+            </div>
             {ownerThread?<details className="relative shrink-0">
               <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-base text-neutral-400" aria-label="Conversation settings">⋯</summary>
               <div className="absolute right-0 z-20 mt-1 rounded-lg border border-noema-border bg-[#191c1a] p-2 shadow-lg">
@@ -531,8 +571,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               onClick={()=>void send()}>Send</button>
           </div>
         </section>:<div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-noema-border bg-[#111113] p-4 text-center text-xs text-neutral-500">
-          No conversations yet.
+          Select a contact to start chatting.
         </div>}
+        </div>
       </div>}
     </>}
   </main>;
