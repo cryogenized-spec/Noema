@@ -68,7 +68,6 @@ async function get(id){
   });
 }
 const put=(v)=>withStore("readwrite",s=>{s.put(v);});
-const del=(id)=>withStore("readwrite",s=>{s.delete(id);});
 
 async function identity(){
   const saved=await get("device");
@@ -204,9 +203,13 @@ async function accept(){
     const alias=word(ui.alias.value).slice(0,32)||"NOEMA guest";
     const response=await api("/v1/invites/redeem","POST",{token,alias});
     const thread=response.thread;
-    await put({id:"key:"+thread.keyId,key,createdAt:new Date().toISOString()});
-    await put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId});
-    await del("pending:"+token);
+    // Commit the encrypted chat key and thread pointer together. A browser
+    // storage failure must not leave only one half of the saved conversation.
+    await withStore("readwrite",store=>{
+      store.put({id:"key:"+thread.keyId,key,createdAt:new Date().toISOString()});
+      store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId});
+      store.delete("pending:"+token);
+    });
     token="";inviteSecret="";history.replaceState(null,"","/");
     selected=thread.id;lastRendered="";
     await refresh();
