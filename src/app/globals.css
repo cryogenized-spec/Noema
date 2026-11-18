@@ -12,6 +12,8 @@
   --noema-violet: #a78bfa;
   --noema-burgundy: #70243d;
   --noema-gold: #d9b16b;
+  --noema-message-font-size: 13px;
+  --noema-contact-sidebar-width: 225px;
 }
 
 html {

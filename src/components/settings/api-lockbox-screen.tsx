@@ -13,6 +13,11 @@ import type {
   SettingKey,
 } from "@/types/providers";
 import type { OpenAiTranscriptionModel, SttProviderId } from "@/types/stt";
+import {
+  DEFAULT_DISPLAY_PREFERENCES, DISPLAY_SETTINGS_KEY, DISPLAY_UPDATED_EVENT,
+  readDisplayPreferences, saveDisplayPreferences,
+  type DisplayPreferences,
+} from "@/lib/ui/display-preferences";
 
 const settingLabels: Record<string, string> = {
   temperature: "Temperature",
@@ -62,7 +67,11 @@ export function ApiLockboxScreen() {
     updateRememberLastProvider,
   } = useSttStore();
   const [openProviderId, setOpenProviderId] = useState<string | null>(PROVIDER_CATALOG[0]?.id ?? null);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"vault" | "models" | "voice" | "integrations">("vault");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"vault" | "models" | "voice" | "integrations" | "display">("vault");
+  const [displayPrefs,setDisplayPrefs]=useState<DisplayPreferences>(DEFAULT_DISPLAY_PREFERENCES);
+  const changeDisplay=<K extends keyof DisplayPreferences>(key:K,value:DisplayPreferences[K])=>{
+    setDisplayPrefs(current=>saveDisplayPreferences({...current,[key]:value}));
+  };
   const [revealedKeys, setRevealedKeys] = useState<Record<string, string>>({});
   const [password, setPassword] = useState("");
   const [vaultMessage, setVaultMessage] = useState("");
@@ -110,20 +119,35 @@ export function ApiLockboxScreen() {
     setDrafts((prev) => ({ ...nextDrafts, ...prev }));
   }, [records]);
 
+  useEffect(()=>{
+    const load=()=>setDisplayPrefs(readDisplayPreferences());
+    const onStorage=(event:StorageEvent)=>{
+      if(!event.key || event.key===DISPLAY_SETTINGS_KEY)load();
+    };
+    load();
+    window.addEventListener(DISPLAY_UPDATED_EVENT,load);
+    window.addEventListener("storage",onStorage);
+    return()=>{
+      window.removeEventListener(DISPLAY_UPDATED_EVENT,load);
+      window.removeEventListener("storage",onStorage);
+    };
+  },[]);
+
   const configuredIds = useMemo(() => new Set(records.map((record) => record.providerId)), [records]);
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden rounded-xl border border-noema-border bg-[#0b0b0d] p-2">
-      <nav className="grid shrink-0 grid-cols-4 gap-1 rounded-lg border border-noema-border bg-[#111113] p-1" aria-label="Settings sections">
+      <nav className="flex min-w-0 shrink-0 gap-1 overflow-x-auto rounded-lg border border-noema-border bg-[#111113] p-1" aria-label="Settings sections">
         {([
           ["vault", "Vault"],
           ["models", "Models"],
           ["voice", "Voice"],
           ["integrations", "Links"],
+          ["display", "Display"],
         ] as const).map(([id, title]) => (
           <button key={id} type="button" aria-current={activeSettingsTab === id ? "page" : undefined}
             onClick={() => setActiveSettingsTab(id)}
-            className={`min-h-10 min-w-0 rounded-md px-1.5 text-[11px] font-medium transition sm:text-xs
+            className={`min-h-10 min-w-[66px] flex-1 rounded-md px-1.5 text-[11px] font-medium transition sm:text-xs
               ${activeSettingsTab === id ? "bg-noema-lime text-black" : "text-neutral-400 hover:bg-white/5 hover:text-white"}`}>
             {title}
           </button>
@@ -450,6 +474,36 @@ export function ApiLockboxScreen() {
       <section className="rounded-xl border border-dashed border-noema-borderSoft bg-slate-900/35 p-3 text-xs text-slate-400">
         Connectors (future): GitHub, Notion, Drive, and storage integrations will appear here.
       </section>
+        )}
+        {activeSettingsTab === "display" && (
+          <div className="space-y-4 rounded-xl border border-noema-border bg-[#111113] p-3 sm:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold">Interface sizing</h2>
+              <button type="button" className="min-h-9 rounded-lg border border-noema-border px-3 text-xs text-neutral-300"
+                onClick={()=>setDisplayPrefs(saveDisplayPreferences(DEFAULT_DISPLAY_PREFERENCES))}>Reset</button>
+            </div>
+            {([
+              {key:"uiScale",label:"Interface scale",min:0.85,max:1.25,step:0.05,
+                value:Math.round(displayPrefs.uiScale*100)+"%"},
+              {key:"messageFontSize",label:"Message text size",min:11,max:20,step:1,
+                value:displayPrefs.messageFontSize+" px"},
+              {key:"contactListWidth",label:"Contact list width (desktop)",min:180,max:320,step:10,
+                value:displayPrefs.contactListWidth+" px"},
+              {key:"longPressMs",label:"Message long-press time",min:300,max:800,step:50,
+                value:displayPrefs.longPressMs+" ms"},
+            ] as const).map(item=>(
+              <label key={item.key} className="block space-y-2">
+                <span className="flex items-center justify-between gap-2 text-xs text-neutral-300">
+                  <span>{item.label}</span>
+                  <span className="font-mono text-noema-lime">{item.value}</span>
+                </span>
+                <input type="range" min={item.min} max={item.max} step={item.step}
+                  value={displayPrefs[item.key]}
+                  onChange={event=>changeDisplay(item.key,Number(event.target.value))}
+                  className="w-full accent-[#b9ff66]" />
+              </label>
+            ))}
+          </div>
         )}
       </div>
     </section>

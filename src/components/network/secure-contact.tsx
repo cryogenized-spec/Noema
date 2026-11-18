@@ -20,6 +20,9 @@ import {
   saveContactSecret, secretFromHash,
 } from "@/lib/network/contact-crypto";
 import {latestIncomingSequence, markIncomingRead} from "@/lib/network/contact-unread";
+import {OffsetContactMenu} from "@/components/contact/offset-contact-menu";
+import {readDisplayPreferences,type DisplayPreferences} from "@/lib/ui/display-preferences";
+import type {MenuAnchor} from "@/lib/ui/offset-menu-position";
 
 const field="min-w-0 w-full rounded-lg border border-noema-border bg-black px-3 py-2.5 text-sm text-white placeholder:text-neutral-600";
 const button="min-h-10 rounded-lg border border-noema-border bg-black/50 px-3 py-2 text-xs text-neutral-200 disabled:opacity-40";
@@ -32,6 +35,9 @@ const clientId=()=> "message-" + crypto.randomUUID().replace(/-/g,"");
 const errText=(error:unknown)=>error instanceof Error?error.message:"Unspecified network error.";
 interface DecryptedMessage extends RelayMessage { text:string; }
 type PendingGuestMessage={threadId:string;message:RelayMessage};
+type OpenContactMenu =
+  | {kind:"conversation";threadId:string;anchor:MenuAnchor}
+  | {kind:"message";threadId:string;messageId:string;anchor:MenuAnchor};
 
 export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const {agents,hydrateAgents}=useAgentStore();
@@ -45,6 +51,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [newThreadIds,setNewThreadIds]=useState<string[]>([]);
   const [selected,setSelected]=useState("");
   const [mobileContactsOpen,setMobileContactsOpen]=useState(true);
+  const [contextMenu,setContextMenu]=useState<OpenContactMenu|null>(null);
+  const [displayPreferences,setDisplayPreferences]=useState<DisplayPreferences|null>(null);
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
   const [alias,setAlias]=useState("");
   const [inviteSecret,setInviteSecret]=useState("");
@@ -73,6 +81,9 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const readyToPoll=useRef(false);
   const ownerSectionRef=useRef(ownerSection);
   const mobileContactsRef=useRef(true);
+  const touchMenuTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const touchStart=useRef<{x:number;y:number}|null>(null);
+  const composerRef=useRef<HTMLTextAreaElement|null>(null);
 
   const receptionist=useMemo(()=>agents.find(agent=>
     normalizeAgentRoles(agent.roleAssignments).includes("primary")),[agents]);
@@ -85,6 +96,30 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   useEffect(()=>{policyRef.current=policy;},[policy]);
   useEffect(()=>{ownerSectionRef.current=ownerSection;},[ownerSection]);
   useEffect(()=>{mobileContactsRef.current=mobileContactsOpen;},[mobileContactsOpen]);
+  useEffect(()=>{
+    const refresh=()=>setDisplayPreferences(readDisplayPreferences());
+    refresh();
+    window.addEventListener("noema:display-preferences-updated",refresh);
+    window.addEventListener("storage",refresh);
+    return()=>{
+      window.removeEventListener("noema:display-preferences-updated",refresh);
+      window.removeEventListener("storage",refresh);
+    };
+  },[]);
+  useEffect(()=>{setContextMenu(null);},[selected,ownerSection,mobileContactsOpen]);
+  const clearLongPress=()=>{
+    if(touchMenuTimer.current!==null)clearTimeout(touchMenuTimer.current);
+    touchMenuTimer.current=null;
+    touchStart.current=null;
+  };
+  useEffect(()=>()=>{if(touchMenuTimer.current!==null)clearTimeout(touchMenuTimer.current);},[]);
+  const openMessageMenu=(messageId:string,anchor:MenuAnchor)=>{
+    if(!active)return;
+    setContextMenu({kind:"message",threadId:active.id,messageId,anchor});
+  };
+  const contextMessage=contextMenu?.kind==="message" && contextMenu.threadId===selected
+    ?messages.find(message=>message.id===contextMenu.messageId):undefined;
+  const closeMenu=()=>setContextMenu(null);
 
   useEffect(()=>{
     alive.current=true;
@@ -333,7 +368,6 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const switchThread=()=>action(async()=>{
     if(!session || !active || !ownerThread)return;
     const next=!active.receptionEnabled;
-    if(next && !window.confirm("Allow this guest conversation to receive billable AI replies to NEW messages only?"))return;
     const result=await relaySetThreadReception(session,active.id,next);
     setThreads(current=>current.map(t=>t.id===active.id?result.thread:t));
     threadsRef.current=threadsRef.current.map(t=>t.id===active.id?result.thread:t);
@@ -474,7 +508,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </section>}
       {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
         <aside aria-label="Contact list"
-          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[225px] md:flex-none"}>
+          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[var(--noema-contact-sidebar-width)] md:flex-none"}
+          >
           <div className="flex min-h-12 shrink-0 items-center justify-between gap-1 border-b border-noema-border px-3">
             <strong className="text-xs font-semibold">Contacts</strong>
             <div className="flex items-center gap-1">
@@ -539,32 +574,71 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               </button>
               <p className="truncate text-xs font-medium">{ownerThread?active.guestAlias:active.ownerAlias}</p>
             </div>
-            {ownerThread?<details className="relative shrink-0">
-              <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-base text-neutral-400" aria-label="Conversation settings">⋯</summary>
-              <div className="absolute right-0 z-20 mt-1 rounded-lg border border-noema-border bg-[#191c1a] p-2 shadow-lg">
-                <button type="button" disabled={busy||!session} onClick={()=>void switchThread()}
-                  className={button+" whitespace-nowrap"}>
-                  AI Reception: {active.receptionEnabled?"On":"Off"}
-                </button>
-              </div>
-            </details>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
+            {ownerThread?<button type="button"
+              title="Conversation actions" aria-label="Conversation actions"
+              aria-haspopup="menu" aria-expanded={contextMenu?.kind==="conversation"}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-neutral-400 hover:bg-white/5 hover:text-white"
+              onClick={event=>{
+                const rect=event.currentTarget.getBoundingClientRect();
+                setContextMenu(current=>current?.kind==="conversation"?null:
+                  {kind:"conversation",threadId:active.id,anchor:{x:rect.right,y:rect.bottom}});
+              }}>
+              <Icon icon="solar:menu-dots-bold" className="text-xl" aria-hidden="true" />
+            </button>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
           </div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite"
+            onContextMenu={event=>{
+              if(event.target!==event.currentTarget)return;
+              event.preventDefault();
+              setContextMenu({kind:"conversation",threadId:active.id,
+                anchor:{x:event.clientX,y:event.clientY}});
+            }}>
             {messages.map(msg=><div key={msg.id}
-              className={"w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
+              className={"group relative w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
                 ((ownerThread?msg.sender!=="guest":msg.sender==="guest")
-                  ?"ml-auto border-noema-lime/30 bg-[#1b291c]":"border-noema-border bg-black/40")}>
-              {msg.sender==="agent"&&<p className="mb-1 text-[10px] font-semibold text-noema-violet">
+                  ?"ml-auto border-noema-lime/30 bg-[#1b291c]":"border-noema-border bg-black/40")}
+              style={{fontSize:"var(--noema-message-font-size,13px)"}}
+              onContextMenu={event=>{
+                event.preventDefault();event.stopPropagation();
+                openMessageMenu(msg.id,{x:event.clientX,y:event.clientY});
+              }}
+              onPointerDown={event=>{
+                if(event.pointerType==="mouse" || !event.isPrimary)return;
+                clearLongPress();
+                touchStart.current={x:event.clientX,y:event.clientY};
+                touchMenuTimer.current=setTimeout(()=>{
+                  touchMenuTimer.current=null;
+                  touchStart.current=null;
+                  openMessageMenu(msg.id,{x:event.clientX,y:event.clientY});
+                },displayPreferences?.longPressMs??460);
+              }}
+              onPointerMove={event=>{
+                const start=touchStart.current;
+                if(start && (Math.abs(start.x-event.clientX)>12 ||
+                  Math.abs(start.y-event.clientY)>12))clearLongPress();
+              }}
+              onPointerUp={clearLongPress} onPointerCancel={clearLongPress}
+              onPointerLeave={clearLongPress}>
+              <button type="button" aria-label="Message actions" title="Message actions" aria-haspopup="menu"
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-white/10 hover:text-white focus-visible:text-white"
+                onClick={event=>{
+                  event.stopPropagation();
+                  const rect=event.currentTarget.getBoundingClientRect();
+                  openMessageMenu(msg.id,{x:rect.right,y:rect.bottom});
+                }}>
+                <Icon icon="solar:menu-dots-bold" className="text-base" aria-hidden="true" />
+              </button>
+              {msg.sender==="agent"&&<p className="mb-1 pr-6 text-[10px] font-semibold text-noema-violet">
                 <Icon icon="solar:cpu-bolt-bold" className="mr-1 inline" aria-hidden="true" />
                 AI RECEPTION · {receptionist?.name||"NOEMA"}
               </p>}
-              <p className="whitespace-pre-wrap break-words">{msg.text}</p>
-              <p className="mt-1 text-right text-[10px] text-neutral-600">{new Date(msg.createdAt).toLocaleTimeString()}</p>
+              <p className="whitespace-pre-wrap break-words pr-5">{msg.text}</p>
+              <p className="mt-1 text-right text-[10px] text-neutral-500">{new Date(msg.createdAt).toLocaleTimeString()}</p>
             </div>)}
             {answering&&<p className="text-xs text-noema-violet">AI processing in this owner tab…</p>}
           </div>
           <div className="flex shrink-0 items-end gap-2 border-t border-noema-border p-2">
-            <textarea className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
+            <textarea ref={composerRef} className={field+" flex-1 resize-none"} rows={1} maxLength={3000} value={draft}
               placeholder="Message…" aria-label="Message"
               onChange={e=>setDrafts(current=>({...current,[selected]:e.target.value}))} />
             <button type="button" className={primary} disabled={!draft.trim()||busy||!session}
@@ -576,5 +650,56 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         </div>
       </div>}
     </>}
+    {contextMenu && active && contextMenu.threadId===active.id && (
+      <OffsetContactMenu anchor={contextMenu.anchor}
+        label={contextMenu.kind==="message"?"Message actions":"Conversation actions"}
+        onClose={closeMenu}>
+        {contextMenu.kind==="conversation" && ownerThread && (
+          <button type="button" role="menuitem" disabled={busy||!session}
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5 disabled:opacity-40"
+            onClick={()=>{closeMenu();void switchThread();}}>
+            <Icon icon="solar:cpu-bolt-linear" className="text-base" aria-hidden="true" />
+            {active.receptionEnabled?"Disable AI Reception":"Enable AI Reception"}
+          </button>
+        )}
+        {contextMenu.kind==="message" && contextMessage && <>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{closeMenu();void navigator.clipboard.writeText(contextMessage.text).catch(e=>setError(errText(e)));}}>
+            <Icon icon="solar:copy-linear" className="text-base" aria-hidden="true" /> Copy text
+          </button>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{
+              const sender=contextMessage.sender==="guest"?active.guestAlias:
+                contextMessage.sender==="owner"?active.ownerAlias:"AI Reception";
+              const excerpt=contextMessage.text.trim().slice(0,180).replace(/\n/g,"\n> ");
+              setDrafts(current=>({...current,[active.id]:
+                "> "+sender+": "+excerpt+"\n\n"+(current[active.id]||"")}));
+              closeMenu();
+              requestAnimationFrame(()=>composerRef.current?.focus());
+            }}>
+            <Icon icon="solar:reply-linear" className="text-base" aria-hidden="true" /> Quote & reply
+          </button>
+          <button type="button" role="menuitem"
+            className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-xs hover:bg-white/5"
+            onClick={()=>{
+              const content=contextMessage.text;
+              closeMenu();
+              if(navigator.share) {
+                void navigator.share({text:content}).catch(e=>{
+                  if(e instanceof Error && e.name==="AbortError")return;
+                  setError(errText(e));
+                });
+              } else void navigator.clipboard.writeText(content).catch(e=>setError(errText(e)));
+            }}>
+            <Icon icon="solar:share-linear" className="text-base" aria-hidden="true" /> Share text
+          </button>
+          <p className="border-t border-noema-border px-3 py-2 text-[10px] text-neutral-500">
+            {contextMessage.sender==="owner"?"Owner":contextMessage.sender==="guest"?"Guest":"AI Reception"} · {new Date(contextMessage.createdAt).toLocaleString()}
+          </p>
+        </>}
+      </OffsetContactMenu>
+    )}
   </main>;
 }
