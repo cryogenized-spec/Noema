@@ -468,12 +468,19 @@ export function WorkshopProfileScreen() {
                   </section>
                   <section className={panelClass + " space-y-2"}>
                     <h2 className="text-sm font-semibold text-noema-lime">Contact & data ownership</h2>
-                    <Link href="/share" className={primaryButton + " inline-flex items-center gap-2"}>
-                      <Icon icon="solar:link-round-linear" aria-hidden="true" />
-                      Contact link / QR demonstration
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                      <Link href="/identity" className={primaryButton + " inline-flex items-center gap-2"}>
+                        <Icon icon="solar:devices-linear" aria-hidden="true" />
+                        Identity & Devices
+                      </Link>
+                      <Link href="/connect" className={outlineButton + " inline-flex items-center gap-2"}>
+                        <Icon icon="solar:link-round-linear" aria-hidden="true" />
+                        Contact inbox
+                      </Link>
+                    </div>
                     <p className="text-[11px] leading-5 text-neutral-500">
-                      The sharing screen is a safe, local preview. Live invitations and agent replies are not connected yet.
+                      Your profile is currently stored on this browser only. Identity & Devices prepares independent
+                      registration and account pairing but does not publish or synchronise profile data.
                     </p>
                     <p className="text-xs leading-5 text-neutral-400">
                       The local-first approach from RADIX is preserved. Your profile is not public or encrypted by the API Lockbox.
