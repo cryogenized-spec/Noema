@@ -226,7 +226,11 @@ export class AccountRegistry {
       await tx.delete(key.proof(requestId,session.deviceId));
       return {memberDeviceId:pairing.candidateDeviceId,status:"approved"};
     });
-    return result.status?reject(result.status,result.error):ok(result);
+    // The successful reply contains status:"approved", which is a domain
+    // state, not an HTTP status code. Only numeric error codes denote failure.
+    return typeof result.status==="number"
+      ? reject(result.status,result.error)
+      : ok(result);
   }
   async revoke(session,id,deviceId) {
     if(!await this.membership(id,session.deviceId,"owner"))return reject(403,"Owner permission required.");
