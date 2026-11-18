@@ -174,7 +174,7 @@ export function AccountEnrollmentPanel({draft}:{draft:LocalIdentityDraft}) {
       <p className={heading}>Invitation to join an account</p>
       <p className="break-all text-[11px] text-neutral-400">Account ID: {invite.accountId}</p>
       <p className="text-xs text-neutral-300">
-        This will request membership for your current browser's public device key.
+        This will request membership for your current browser&apos;s public device key.
         The owner must separately verify and approve it. Opening the link alone grants no access.
       </p>
       <button type="button" className={primary} disabled={busy||!session}
@@ -191,8 +191,8 @@ export function AccountEnrollmentPanel({draft}:{draft:LocalIdentityDraft}) {
       <button type="button" className={btn} disabled={busy||!session}
         onClick={()=>void check()}>Check approval status</button>
       {candidate.status==="approved"&&<p className="text-xs text-neutral-400">
-        Pairing grants account membership only. Your existing device's message encryption keys
-        are not silently copied from the owner's browser.
+        Pairing grants account membership only. Your existing device&apos;s message encryption keys
+        are not silently copied from the owner&apos;s browser.
       </p>}
     </section>}
     {owner&&<section className={shell+" space-y-3"}>
