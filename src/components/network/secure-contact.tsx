@@ -503,7 +503,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
           </div>
         </section>:<div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-noema-border bg-[#111113] p-4 text-center text-xs text-neutral-500">
           No conversations yet.
-        </div>
+        </div>}
       </div>}
     </>}
   </main>;
