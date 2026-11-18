@@ -508,7 +508,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       </section>}
       {(!isOwner||ownerSection==="inbox")&&<div className="flex min-h-0 flex-1 gap-2 overflow-hidden">
         <aside aria-label="Contact list"
-          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[var(--noema-contact-sidebar-width,225px)] md:flex-none"}
+          className={(mobileContactsOpen?"flex flex-1":"hidden")+" min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-noema-border bg-[#111113] md:flex md:w-[var(--noema-contact-sidebar-width)] md:flex-none"}
           >
           <div className="flex min-h-12 shrink-0 items-center justify-between gap-1 border-b border-noema-border px-3">
             <strong className="text-xs font-semibold">Contacts</strong>
