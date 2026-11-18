@@ -2,6 +2,8 @@ const META_KEY = "noema-vault-meta-v2";
 const LOCK_NAME = "noema-vault-init-v2";
 let key: CryptoKey | null = null;
 let activeMeta: string | null = null;
+// Every explicit lock or newer unlock invalidates all pending PBKDF2/Web Locks work.
+let unlockGeneration = 0;
 const b64 = (a: Uint8Array) => btoa(Array.from(a, (n) => String.fromCharCode(n)).join(""));
 const un64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
@@ -42,11 +44,18 @@ export const vaultIsConfigured = (): boolean =>
 export const vaultIsUnlocked = (): boolean =>
   key !== null && activeMeta !== null && typeof window !== "undefined" &&
   window.localStorage.getItem(META_KEY) === activeMeta;
-export function lockVault(): void { key = null; activeMeta = null; }
+export function lockVault(): void {
+  ++unlockGeneration;
+  key = null; activeMeta = null;
+}
 
 /** Vault creation is serialized across browser tabs. No Web Locks => no unsafe creation. */
 export async function unlockVault(passphrase: string): Promise<void> {
   lockVault();
+  const generation = unlockGeneration;
+  const assertCurrent = () => {
+    if (generation !== unlockGeneration) throw Error("Vault unlock cancelled by a later lock or unlock.");
+  };
   if (typeof window === "undefined" || !globalThis.crypto?.subtle)
     throw Error("A secure WebCrypto browser is required.");
   if (passphrase.length < 12) throw Error("Passphrase needs at least 12 characters.");
@@ -65,6 +74,7 @@ export async function unlockVault(passphrase: string): Promise<void> {
           throw Error("Wrong passphrase");
       } catch { throw Error("Wrong passphrase or corrupted vault."); }
       // The winning metadata may have changed while PBKDF2 was running.
+      assertCurrent();
       if (window.localStorage.getItem(META_KEY) !== stored)
         throw Error("Vault changed during unlock. Retry.");
       key = candidate; activeMeta = stored;
@@ -75,12 +85,15 @@ export async function unlockVault(passphrase: string): Promise<void> {
     const proposed = JSON.stringify({
       version: 2, salt: b64(salt), proof: await seal("NOEMA_VAULT_V2", candidate),
     });
+    // Do not initialize a vault after the user locked or superseded this attempt.
+    assertCurrent();
     // No second tab using this application can initialize while the lock is held.
     if (window.localStorage.getItem(META_KEY))
       throw Error("Another tab initialized this vault. Retry.");
     window.localStorage.setItem(META_KEY, proposed);
     if (window.localStorage.getItem(META_KEY) !== proposed)
       throw Error("Vault metadata changed; refusing to retain a stale key.");
+    assertCurrent();
     key = candidate; activeMeta = proposed;
   };
   const lockManager = window.navigator?.locks;

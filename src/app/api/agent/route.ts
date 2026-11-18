@@ -50,7 +50,7 @@ export async function POST(request: Request) {
         headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Content-Type-Options": "nosniff" },
       });
     }
-    const result = await executeAgentPayload(payload);
+    const result = await executeAgentPayload(payload, request.signal);
     if (!result.ok) return reject(502, result.error?.message ?? "Provider request failed.");
     return NextResponse.json({ content: result.content, provider: result.provider }, { headers: { "Cache-Control": "no-store" } });
   } catch {

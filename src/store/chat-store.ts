@@ -7,6 +7,8 @@ import type { ChatMessage } from "@/types/chat";
 import type { ConversationThread } from "@/types/conversation";
 
 const DEFAULT_THREAD_KEY = "default";
+// Prevent out-of-order IndexedDB reads from replacing a more recent selection.
+let threadSelectionRequest = 0;
 
 const sortMessages = (messages: ChatMessage[]) =>
   [...messages].sort((a, b) => {
@@ -133,8 +135,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ messages: state.messages.filter((item) => item.id !== id) }));
   },
   setActiveThread: async (threadKey) => {
+    if (!get().threads.some((thread) => thread.threadKey === threadKey))
+      throw new Error("Conversation does not exist.");
+    const requestId = ++threadSelectionRequest;
+    // Update the heading and clear old content immediately, before reading storage.
+    set({ activeThreadKey: threadKey, messages: [] });
     const messages = await db.messages.where("threadKey").equals(threadKey).toArray();
-    set({ activeThreadKey: threadKey, messages: sortMessages(messages) });
+    if (requestId === threadSelectionRequest && get().activeThreadKey === threadKey)
+      set({ messages: sortMessages(messages) });
   },
   setThreadAgentId: async (threadKey, id) => {
     await db.threads.where("threadKey").equals(threadKey).modify({ selectedAgentId: id, updatedAt: new Date().toISOString() });

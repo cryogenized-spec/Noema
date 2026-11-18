@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     audio,
     openaiModel: isOpenAiModel(model) ? model : "gpt-4o-mini-transcribe",
     language: language || undefined,
+    signal: request.signal,
   });
   if (!result.ok) {
     const code = result.error.code;

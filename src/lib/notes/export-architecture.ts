@@ -1,5 +1,6 @@
 import { buildNoteFilename } from "@/lib/notes/conversion";
 import { renderNoteWithFrontmatter } from "@/lib/notes/frontmatter";
+import { safeExportPath } from "@/lib/security/export-safety";
 import type { CanonicalMarkdownNote, RenderedMarkdownNote } from "@/types/notes";
 
 export interface VaultLayoutConfig {
@@ -33,7 +34,7 @@ export function planVaultExport(
     files: notes.map((note) => {
       const rendered = renderCanonicalNote(note);
       return {
-        path: `${layout.notesDir}/${rendered.filename}`,
+        path: safeExportPath(layout.notesDir, rendered.filename),
         content: rendered.markdown,
       };
     }),

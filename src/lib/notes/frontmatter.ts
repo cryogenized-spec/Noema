@@ -1,14 +1,5 @@
 import type { CanonicalMarkdownNote, CanonicalNoteFrontmatter } from "@/types/notes";
-
-const sanitizeYamlString = (value: string) => value.replace(/"/g, '\\"');
-
-const formatYamlValue = (value: string | string[]) => {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => `"${sanitizeYamlString(item)}"`).join(", ")}]`;
-  }
-
-  return `"${sanitizeYamlString(value)}"`;
-};
+import { safeYamlKey, safeYamlValue } from "@/lib/security/export-safety";
 
 export function buildDefaultFrontmatter(note: CanonicalMarkdownNote): CanonicalNoteFrontmatter {
   return {
@@ -30,7 +21,7 @@ export function serializeFrontmatter(frontmatter: CanonicalNoteFrontmatter): str
   if (entries.length === 0) return "";
 
   const body = entries
-    .map(([key, value]) => `${key}: ${formatYamlValue(value as string | string[])}`)
+    .map(([key, value]) => `${safeYamlKey(key)}: ${safeYamlValue(value as string | string[])}`)
     .join("\n");
 
   return `---\n${body}\n---\n`;
