@@ -284,4 +284,20 @@ ui.refresh.addEventListener("click",()=>void refresh());
 window.addEventListener("focus",()=>void refresh());
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refresh();});
 window.setInterval(()=>{void refresh();},5000);
+// Mobile keyboards can resize only the visual viewport. Keep the conversation
+// and composer within its actual height instead of scrolling the whole page.
+const viewport=window.visualViewport;
+if(viewport){
+  const fitViewport=()=>{
+    if(viewport.scale!==1){
+      document.documentElement.style.removeProperty("--noema-viewport-height");
+      return;
+    }
+    document.documentElement.style.setProperty("--noema-viewport-height",
+      Math.max(1,Math.floor(viewport.height))+"px");
+  };
+  viewport.addEventListener("resize",fitViewport);
+  window.addEventListener("resize",fitViewport);
+  fitViewport();
+}
 void init();
