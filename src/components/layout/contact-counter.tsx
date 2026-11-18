@@ -66,6 +66,7 @@ export function ContactCounter() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     window.addEventListener(CONTACT_READ_EVENT, onFocus);
+    window.addEventListener("noema:relay-session", onFocus);
     const onStorage = (event: StorageEvent) => {
       if(!event.key || event.key.startsWith(CONTACT_READ_PREFIX))void refresh();
     };
@@ -76,12 +77,13 @@ export function ContactCounter() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
       window.removeEventListener(CONTACT_READ_EVENT, onFocus);
+      window.removeEventListener("noema:relay-session", onFocus);
       window.removeEventListener("storage", onStorage);
     };
   }, []);
 
   return (
-    <Link href="/connect"
+    <Link href={relayAvailable ? "/connect" : "https://noema-contact-staging.vercel.app/connect"}
       title={count === null ? "Encrypted contact inbox" : count===0 ? "No unread guest messages" : `${count} unread guest messages`}
       aria-label={count === null ? "Open encrypted contacts"
         : count===0 ? "Open encrypted contacts (no unread guest messages)"

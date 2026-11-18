@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { GlobalContactNotification } from "@/components/layout/global-contact-notification";
 
 const appName = "NOEMA";
 const appDescription = "NOEMA is a local-first communication and intelligence workspace.";
@@ -23,7 +24,7 @@ export const viewport: Viewport = { themeColor: "#070707" };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>{children}<GlobalContactNotification /></body>
     </html>
   );
 }

@@ -316,7 +316,7 @@ export function WorkshopProfileScreen() {
   return (
     <main className="h-dvh min-w-0 overflow-hidden bg-noema-midnight text-white">
       <div className="mx-auto flex h-full min-h-0 min-w-0 max-w-[720px] flex-col border-x border-noema-border bg-[#09090b]">
-        <header className="flex min-h-[60px] shrink-0 items-center justify-between gap-2 border-b border-noema-border px-3 sm:px-5">
+        <header className="flex min-h-[60px] shrink-0 items-center justify-between gap-2 border-b border-noema-border pl-3 pr-14 sm:px-5">
           <Link href="/" aria-label="Return to NOEMA" className="flex min-w-0 items-center gap-2">
             <Icon icon="solar:arrow-left-linear" className="shrink-0 text-lg text-neutral-400" aria-hidden="true" />
             <Image src="/brand/noema-wordmark.svg" width={282} height={56} alt="NOEMA"

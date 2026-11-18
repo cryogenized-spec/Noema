@@ -114,7 +114,7 @@ export function IdentityCenter() {
   return (
     <main className="flex h-dvh min-w-0 flex-col overflow-hidden bg-noema-midnight p-3 text-white sm:p-5">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[690px] flex-col gap-3">
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-noema-border pb-3">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-noema-border pb-3 pr-14 sm:pr-0">
           <Link href="/" className="flex items-center gap-2 text-xs text-neutral-300 hover:text-noema-lime">
             <Icon icon="solar:arrow-left-linear" aria-hidden="true" />
             Workspace
