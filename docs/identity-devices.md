@@ -18,6 +18,20 @@
 - Security: explain account ownership, approval, revocation and limits honestly. Account owner has not been copied from the current staging Worker to the phone.
 - Existing mobile/desktop navigation and Workshop page link to Identity & Devices; no second sidebar or npm dependencies.
 
+## Phase 1 server-side implementation (code only; not deployed)
+
+The next layer is now implemented **behind two separate switches**:
+- Cloudflare `ACCOUNT_REGISTRATION_ENABLED` must equal the literal string `"true"`. The Worker returns HTTP 503 for all `/v1/accounts` requests otherwise. Wrangler's checked-in example keeps it `"false"`. The deployed staging Worker has NOT been updated with account routes.
+- The PWA exposes the network registration panel only if `NEXT_PUBLIC_NOEMA_ACCOUNTS_ENABLED === "true"` **and** the configured relay is available. This public environment variable is **not** set on Vercel staging. Its absence means no registration buttons, pairing secrets or account calls run.
+
+**Implemented but inactive backend:** `relay/src/account-registry.mjs` handles signed-device account creation with server-issued opaque IDs, case-folded handle uniqueness, owner membership, and per-device membership discovery. Owners can issue one-use hashed pairing offers (5 minutes, capped at 6 per account/day); a second authenticated device can redeem the offer into a 10-minute pending request. Its six-digit out-of-band verification code is returned only to that candidate, not the owner's pending-request list. The owner gets a separate short-lived challenge (2 minutes), signs it with the existing non-extractable P-256 identity key, and must submit both the correct verification code and signature for atomic approval as **member**, never owner. The server checks the authenticated owner's active membership, registered public key, account ID, candidate device, challenge, time and one-time request state. Repeated approvals and unauthorized access are rejected. Owner revocation is reflected in account membership checks even when an old browser session token is still valid; it does **not** automatically erase copies of old ciphertext.
+
+**Implemented but inactive frontend:** `src/lib/network/account-client.ts` exposes typed registration, account listing, pairing-offer, request, approval, device listing and revocation calls with explicit feature gating; `src/lib/identity/pairing-link.ts` keeps one-use offer secrets solely in the URL fragment (never query strings). `AccountEnrollmentPanel` supports these operations only when both flags are enabled. Pairing URLs are stripped from the browser address after import into page memory. The Account tab continues to save registration drafts locally when enrollment is off.
+
+**Automated negative tests:** `relay/tests/account-registry.test.mjs` verifies default-off routes, strict handle rules, account separation, hashed offers, one-time redemption, candidate-exclusive code delivery, signed owner approval, replay rejection, role limitations and revocation on existing sessions. `tests/identity-pairing-link.test.mjs` validates HTTPS fragment-only capabilities and rejects insecure/malformed links.
+
+**Production limitations:** This code is not an independently audited multi-user identity service. It uses the staging Durable Object storage abstraction for policy tests; full production deployment requires account-specific Durable Object routing, cross-instance unique handle reservation, challenge expiry/garbage collection, audit trails, rate limiting that cannot be bypassed by rotating device keys, secure backups, independent encryption key transfer, revocation key rotation, and a stable non-Vercel-authenticated user onboarding domain. Neither switch should be enabled before those are addressed and physical two-device acceptance tests are performed.
+
 ## Proposed server identity schema (not deployed)
 
 ```ts
