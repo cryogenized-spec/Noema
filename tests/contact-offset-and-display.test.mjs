@@ -47,6 +47,6 @@ test("settings exposes working size controls and global loader applies them",()=
   assert.match(settings,/Interface scale/);
   assert.match(settings,/Contact list width \(desktop\)/);
   assert.match(settings,/Message text size/);
-  assert.match(settings,/Long-press/);
+  assert.match(settings,/long-press/);
   assert.match(layout,/<DisplayPreferencesLoader\s*\/>/);
 });
