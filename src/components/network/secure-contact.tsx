@@ -19,6 +19,7 @@ import {
   decryptContactMessage, encryptContactMessage, newContactKeyId, newContactSecret,
   saveContactSecret, secretFromHash,
 } from "@/lib/network/contact-crypto";
+import {latestIncomingSequence, markIncomingRead} from "@/lib/network/contact-unread";
 
 const field="min-w-0 w-full rounded-lg border border-noema-border bg-black px-3 py-2.5 text-sm text-white placeholder:text-neutral-600";
 const button="min-h-10 rounded-lg border border-noema-border bg-black/50 px-3 py-2 text-xs text-neutral-200 disabled:opacity-40";
@@ -69,6 +70,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const contactsLoaded=useRef(false);
   const policyRef=useRef<ReceptionPolicy|null>(null);
   const readyToPoll=useRef(false);
+  const ownerSectionRef=useRef(ownerSection);
 
   const receptionist=useMemo(()=>agents.find(agent=>
     normalizeAgentRoles(agent.roleAssignments).includes("primary")),[agents]);
@@ -79,6 +81,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   useEffect(()=>{sessionRef.current=session;},[session]);
   useEffect(()=>{threadsRef.current=threads;},[threads]);
   useEffect(()=>{policyRef.current=policy;},[policy]);
+  useEffect(()=>{ownerSectionRef.current=ownerSection;},[ownerSection]);
 
   useEffect(()=>{
     alive.current=true;
@@ -140,7 +143,12 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       catch{return {...message,text:"[Encrypted: this browser cannot decrypt this message]"};}
     }));
     if(alive.current && selectedRef.current===thread.id &&
-       requestId===messageLoadSequence.current)setMessages(rendered);
+       requestId===messageLoadSequence.current) {
+      setMessages(rendered);
+      if(thread.owner===current.deviceId && ownerSectionRef.current==="inbox" &&
+         document.visibilityState==="visible")
+        markIncomingRead(current.deviceId,thread.id,latestIncomingSequence(result.messages));
+    }
     return rendered;
   },[]);
 
