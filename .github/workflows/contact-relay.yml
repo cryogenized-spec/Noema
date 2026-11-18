@@ -10,6 +10,11 @@ on:
       - "src/app/invite/**"
       - "src/app/share/**"
       - "src/lib/db/client.ts"
+      - "src/components/identity/**"
+      - "src/app/identity/**"
+      - "src/lib/identity/**"
+      - "src/types/identity.ts"
+      - "tests/identity-account-policy.test.mjs"
       - "tests/contact-encryption.test.mjs"
       - ".github/workflows/contact-relay.yml"
   push:
