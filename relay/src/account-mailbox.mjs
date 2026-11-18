@@ -8,7 +8,6 @@
  */
 import { isId, messageText } from "./protocol.mjs";
 
-const stamp=()=>new Date().toISOString();
 const ok=(value,status=200)=>new Response(JSON.stringify(value),{
   status,headers:{"content-type":"application/json","cache-control":"no-store"},
 });
@@ -89,7 +88,7 @@ export class AccountMailbox {
         return {error:429,message:"Daily account message limit reached."};
       const seq=meta.lastSeq+1;
       const message={id:accountId+":"+seq,seq,clientMessageId:body.clientMessageId,
-        senderDeviceId:session.deviceId,content,createdAt:stamp(),status:"stored"};
+        senderDeviceId:session.deviceId,content,createdAt:new Date(this.clock()).toISOString(),status:"stored"};
       await tx.put(keys.message(accountId,seq),message);
       await tx.put(keys.dedupe(accountId,session.deviceId,body.clientMessageId),message);
       await tx.put(keys.meta(accountId),{lastSeq:seq,count:meta.count+1});
