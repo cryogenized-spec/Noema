@@ -19,6 +19,7 @@ const key = {
   account: (id) => "accounts:entry:" + id,
   handle: (h) => "accounts:handle:" + h,
   owner: (device) => "accounts:owner:" + device,
+  byDevice: (device) => "accounts:by-device:" + device,
   member: (id,device) => "accounts:member:" + id + ":" + device,
   offer: (tokenHash) => "accounts:offer:" + tokenHash,
   request: (id) => "accounts:pair:" + id,
@@ -69,7 +70,10 @@ export class AccountRegistry {
       try{body=await parseJSON(request);}catch{return reject(400,"Invalid request.");}
     }
     if(pathname==="/v1/accounts"&&method==="POST")return this.create(session,body);
-    if(pathname==="/v1/accounts"&&method==="GET")return this.owned(session);
+    if(pathname==="/v1/accounts"&&method==="GET"){
+      const owned=await this.owned(session);
+      return ok({accounts:owned.accounts,memberships:owned.memberships});
+    }
     const endpoint=pathname.match(/^\/v1\/accounts\/([A-Za-z0-9_-]{12,90})(?:\/(.*))?$/);
     if(!endpoint)return reject(404,"Unknown account action.");
     const accountId=endpoint[1],rest=endpoint[2]||"";
@@ -102,17 +106,23 @@ export class AccountRegistry {
       await tx.put(key.account(id),account);
       await tx.put(key.handle(handle),id);
       await tx.put(key.owner(session.deviceId),id);
+      await tx.put(key.byDevice(session.deviceId),[id]);
       await tx.put(key.member(id,session.deviceId),membership);
       return {account};
     });
     return result.status?reject(result.status,result.error):ok(result,201);
   }
   async owned(session) {
-    const id=await this.storage.get(key.owner(session.deviceId));
-    if(!id)return ok({accounts:[]});
-    const m=await this.membership(id,session.deviceId,"owner");
-    const account=m&&await this.storage.get(key.account(id));
-    return ok({accounts:account?[account]:[]});
+    const ids=await this.storage.get(key.byDevice(session.deviceId))||[];
+    const entries=await Promise.all(ids.slice(0,5).map(async id=>{
+      const m=await this.membership(id,session.deviceId);
+      if(!m)return null;
+      const account=await this.storage.get(key.account(id));
+      return account?{account,role:m.role}:null;
+    }));
+    const activeEntries=entries.filter(Boolean);
+    return {status:200,accounts:activeEntries.map(x=>x.account),
+      memberships:activeEntries.map(x=>({accountId:x.account.id,role:x.role}))};
   }
   async getAccount(session,id) {
     if(!await this.membership(id,session.deviceId))return reject(404,"Account unavailable.");
@@ -218,7 +228,11 @@ export class AccountRegistry {
         return {status:403,error:"Pairing approval denied or already used."};
       const memberKey=key.member(id,pairing.candidateDeviceId);
       if(await tx.get(memberKey))return {status:409,error:"Device already registered."};
+      const indexKey=key.byDevice(pairing.candidateDeviceId);
+      const existingAccounts=await tx.get(indexKey)||[];
+      if(existingAccounts.length>=4)return {status:429,error:"Device account limit reached."};
       const when=new Date(this.clock()).toISOString();
+      await tx.put(indexKey,[...existingAccounts,id]);
       await tx.put(memberKey,{accountId:id,deviceId:pairing.candidateDeviceId,
         role:"member",status:"active",approvedAt:when,
         approvedBy:session.deviceId,revokedAt:null});
@@ -241,6 +255,9 @@ export class AccountRegistry {
         return false;
       await tx.put(key.member(id,deviceId),{...record,status:"revoked",
         revokedAt:new Date(this.clock()).toISOString()});
+      const indexKey=key.byDevice(deviceId);
+      const linked=await tx.get(indexKey)||[];
+      await tx.put(indexKey,linked.filter(accountId=>accountId!==id));
       return true;
     });
     return result?ok({revoked:true}):reject(404,"Active device unavailable.");
