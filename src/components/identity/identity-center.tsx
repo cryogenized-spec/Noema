@@ -261,7 +261,7 @@ export function IdentityCenter() {
               </p>}
               {verification==="guest" && <p className="text-[11px] text-neutral-400">
                 This device may receive private invitations from the staging owner.
-                It cannot manage the owner's inbox or sign in as their second account device.
+                It cannot manage the owner&apos;s inbox or sign in as their second account device.
               </p>}
             </section>
           </>}
@@ -279,7 +279,7 @@ export function IdentityCenter() {
                   A phone must not become an owner merely by copying a device ID or QR.
                 </p>
                 <p><Icon icon="solar:lock-keyhole-linear" className="mr-2 inline text-noema-lime" aria-hidden="true" />
-                  Pairing must not transmit the laptop's non-extractable private key.
+                  Pairing must not transmit the laptop&apos;s non-extractable private key.
                 </p>
                 <p><Icon icon="solar:close-circle-linear" className="mr-2 inline text-noema-lime" aria-hidden="true" />
                   Revoked devices must lose access to messages, agents and account settings.
@@ -298,7 +298,7 @@ export function IdentityCenter() {
                 <Icon icon="solar:arrow-right-up-linear" aria-hidden="true" />
               </Link>
               <p className="text-[11px] leading-5 text-neutral-500">
-                Clearing this site's browser data may destroy your signing key, contact encryption
+                Clearing this site&apos;s browser data may destroy your signing key, contact encryption
                 keys, local profile and drafts. No secure multi-device recovery is available yet.
               </p>
             </section>
