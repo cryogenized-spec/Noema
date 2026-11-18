@@ -6,5 +6,5 @@
     "bindings": [{ "name": "NOEMA_ROOM", "class_name": "NoemaRelayRoom" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NoemaRelayRoom"] }],
-  "vars": { "APP_ORIGIN": "https://noema-contact-staging.vercel.app", "OWNER_DEVICE_ID": "" }
+  "vars": { "APP_ORIGIN": "https://noema-contact-staging.vercel.app", "OWNER_DEVICE_ID": "", "ACCOUNT_REGISTRATION_ENABLED": "false" }
 }
