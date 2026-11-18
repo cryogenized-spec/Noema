@@ -115,7 +115,7 @@ export function MessageBubble({
         } ${outputVisibility === "ghost" ? "border-dashed border-noema-gold/45 bg-[#241520]" : ""} ${isContextActive ? "ring-2 ring-noema-violet ring-offset-2 ring-offset-black" : ""} ${
           selected ? "ring-2 ring-noema-lime ring-offset-2 ring-offset-black" : ""
         }`}
-        style={accentColor ? { borderColor: accentColor } : undefined}
+        style={{ ...(accentColor ? { borderColor: accentColor } : {}), fontSize: "var(--noema-message-font-size,13px)" }}
         onClick={() => {
           if (selectionMode) {
             onToggleSelect(message);
