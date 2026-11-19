@@ -10,7 +10,7 @@ const STORE="entries";
 const byId=(id)=>document.getElementById(id);
 const ui=Object.fromEntries([
   "threads","onboarding","empty","chat","alias","accept","recipient","messages",
-  "composer","message","send","status","footer","refresh","invite-title","invite-description",
+  "composer","message","send","status","footer","refresh","invite-title","invite-description","notification-toggle",
 ].map(k=>[k,byId(k)]));
 
 const invitationToken=()=>{
@@ -23,7 +23,70 @@ let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
 let pendingSend=null,lastRendered="";
 const timeline=createTimelineGuard(), drafts=createDraftBuffer();
-let reauth=null;
+let reauth=null,pushConfiguration=null,pushBusy=false;
+const supportsPush=()=>window.isSecureContext && "Notification" in window &&
+  "serviceWorker" in navigator && "PushManager" in window;
+const pushKeyBytes=(key)=>{
+  if(!/^[A-Za-z0-9_-]{80,100}$/.test(key))throw Error("Invalid notification server key.");
+  const raw=atob(key.replace(/-/g,"+").replace(/_/g,"/")+"=".repeat((4-key.length%4)%4));
+  const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+  if(bytes.length!==65||bytes[0]!==4)throw Error("Invalid notification server key.");
+  return bytes;
+};
+function renderPush(){
+  const button=ui["notification-toggle"];
+  const available=supportsPush() && !!pushConfiguration?.available && allThreads.length>0;
+  button.hidden=!available;
+  if(!available)return;
+  const enabled=!!pushConfiguration.enabled && Notification.permission==="granted";
+  button.textContent=enabled?"🔕":"🔔";
+  button.title=enabled?"Disable notifications":"Enable notifications";
+  button.setAttribute("aria-label",button.title);
+  button.setAttribute("aria-pressed",String(enabled));
+  button.disabled=pushBusy;
+}
+async function refreshPush(){
+  if(!supportsPush()||!session||!allThreads.length)return;
+  try{pushConfiguration=await api("/v1/push/config");}catch{pushConfiguration=null;}
+  renderPush();
+}
+async function togglePush(){
+  if(pushBusy||!pushConfiguration?.available)return;
+  const enabling=!(pushConfiguration.enabled && Notification.permission==="granted");
+  // Browsers require a direct tap. Start the permission request before any await.
+  const requested=enabling?Notification.requestPermission():null;
+  pushBusy=true;renderPush();
+  try{
+    if(enabling){
+      if(await requested!=="granted")throw Error("Allow notifications in browser settings to enable.");
+      const config=await api("/v1/push/config");
+      if(!config.available||!config.publicKey)throw Error("Notifications are unavailable.");
+      const key=pushKeyBytes(config.publicKey);
+      const registration=await navigator.serviceWorker.register("/noema-push-sw.js",{scope:"/"});
+      let subscription=await registration.pushManager.getSubscription();
+      if(subscription){
+        const previous=new Uint8Array(subscription.options.applicationServerKey||new ArrayBuffer(0));
+        if(previous.length!==key.length||previous.some((v,i)=>v!==key[i])){
+          await subscription.unsubscribe();subscription=null;
+        }
+      }
+      if(!subscription)subscription=await registration.pushManager.subscribe({
+        userVisibleOnly:true,applicationServerKey:key,
+      });
+      try{await api("/v1/push/subscribe","POST",{subscription:subscription.toJSON()});}
+      catch(e){await subscription.unsubscribe().catch(()=>{});throw e;}
+    }else{
+      await api("/v1/push/unsubscribe","POST",{});
+      const registration=await navigator.serviceWorker.getRegistration("/");
+      const subscription=await registration?.pushManager.getSubscription();
+      if(subscription)await subscription.unsubscribe();
+    }
+    pushConfiguration=await api("/v1/push/config");
+    status("");
+  }catch(e){status(serverError(e));}
+  finally{pushBusy=false;renderPush();}
+}
+
 const show=(name,yes)=>{ui[name].hidden=!yes;};
 const status=(message)=>{ui.status.textContent=message||"";ui.footer.hidden=!message;};
 const word=(v)=>String(v??"").trim().slice(0,80);
@@ -206,7 +269,7 @@ async function refresh(){
     if(!selected||!next.some(x=>x.id===selected)){
       selectThread(next[0]?.id||"");
     }
-    renderTabs();renderPanels();
+    renderTabs();renderPanels();renderPush();
     if(selected)await loadMessages();
     status("");
   }catch(e){status(serverError(e));}
@@ -233,6 +296,7 @@ async function accept(){
     selectThread(thread.id);
     await refresh();
     renderPanels();
+    void refreshPush();
     status("");
   }catch(e){status(serverError(e));}
   finally{busy=false;renderPanels();}
@@ -274,10 +338,12 @@ async function init(){
       // Clean up URL fragments that may have come from accidental navigation.
       if(location.hash)history.replaceState(null,"",location.pathname+location.search);
       await refresh();
+      void refreshPush();
     }else renderPanels();
   }catch(e){status(serverError(e));ui.accept.disabled=true;}
 }
 ui.accept.addEventListener("click",()=>void accept());
+ui["notification-toggle"].addEventListener("click",()=>void togglePush());
 ui.composer.addEventListener("submit",e=>void send(e));
 ui.message.addEventListener("input",()=>drafts.set(selected,ui.message.value));
 ui.refresh.addEventListener("click",()=>void refresh());

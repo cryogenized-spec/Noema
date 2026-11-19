@@ -46,3 +46,31 @@ This branch replaces the older plaintext RADIX/NOEMA Cloudflare relay pilot. It 
 ## Release gates
 
 Do not public-launch yet. Threat-model owner identity key loss, phishing/fake invite links, fragment exfiltration, cross-origin XSS, encrypted backup recovery, zero-knowledge message retention, credential compromise, abuse denial-of-service, mailbox garbage collection, Cloudflare costs, quota fairness, external-model consent, per-message spend accounting, and device-level tests for cross-browser decryption and auto reception. Cloudflare cost/usage quotas and app-layer abuse protection must be configured before public access. This is a private development slice; no formal security audit has been performed.
+
+## Optional Web Push pilot (disabled until accepted)
+
+This is an **opt-in** notification channel, not message delivery or a read receipt.
+The Worker sends a single generic encrypted wake string. It never sends a
+sender name, conversation identifier, message text, invitation token or key.
+
+The implementation uses only Cloudflare WebCrypto and `fetch`, with VAPID
+(RFC 8292) and `aes128gcm` (RFC 8291). A private VAPID key must be stored as
+the Worker secret `VAPID_PRIVATE_KEY`, never in Git, a Vercel public variable
+or a browser. The matching `VAPID_PUBLIC_KEY` is a Worker plain-text binding.
+`VAPID_SUBJECT` must be a stable `mailto:` or `https://` contact. The Worker
+returns `available:false` until **all** of these are present and the explicit
+`PUSH_ENABLED=true` switch is set. The repository configuration leaves
+`PUSH_ENABLED=false` intentionally.
+
+The two PWAs each install only their own scoped `/noema-push-sw.js` after the
+user taps Enable. Permission is never prompted automatically. A signed
+device can register at most one current subscription and revoke it from
+Settings / the guest bell. An uninvited guest cannot register. Subscription
+endpoints must use exact known Google, Mozilla or Apple push-service hosts,
+preventing arbitrary Worker network requests.
+
+For staging release: run `node --test relay/tests/*.test.mjs`, verify signed
+owner/guest CORS and permission smoke, test two-device subscribe/send/reply,
+verify notifications with the PWA closed and click navigation, verify revoke
+and 404/410 cleanup. Do not interpret an accepted push-service HTTP response
+as verified delivery to a handset. Keep account and mailbox flags disabled.

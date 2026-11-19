@@ -4,6 +4,7 @@ import {
 } from "./protocol.mjs";
 import { AccountRegistry } from "./account-registry.mjs";
 import {classifyBrowserOrigin,allowedGuestRoute} from "./guest-origin.mjs";
+import {pushConfigured,normalizePushSubscription,sendWebPush} from "./web-push.mjs";
 
 const now = () => Date.now();
 const iso = () => new Date().toISOString();
@@ -62,6 +63,20 @@ export class NoemaRelayRoom {
     const entry = await this.state.storage.get(threadKey(id));
     return entry && (entry.owner === session.deviceId || entry.guest === session.deviceId) ? entry : null;
   }
+  async notifyRecipient(deviceId) {
+    if(!pushConfigured(this.env))return;
+    const record=await this.state.storage.get("push:"+deviceId);
+    if(!record)return;
+    const expectedOrigin=this.env.OWNER_DEVICE_ID===deviceId
+      ? this.env.APP_ORIGIN : this.env.GUEST_ORIGIN;
+    if(record.origin!==expectedOrigin)return;
+    const result=await sendWebPush(record.subscription,this.env);
+    if(result.kind==="gone") {
+      const current=await this.state.storage.get("push:"+deviceId);
+      if(current?.subscription.endpoint===record.subscription.endpoint)
+        await this.state.storage.delete("push:"+deviceId);
+    }
+  }
   async messages(id, after=0, through=Number.MAX_SAFE_INTEGER) {
     const all = await this.state.storage.list({prefix:msgPrefix(id)});
     return [...all.values()].filter((m) => m.seq > after && m.seq <= through)
@@ -111,6 +126,47 @@ export class NoemaRelayRoom {
 
     const session=await this.user(req);
     if (!session) return fail(401,"Authenticated device session required.");
+
+    if(url.pathname==="/v1/push/config" && req.method==="GET"){
+      const enabled=pushConfigured(this.env);
+      const saved=await this.state.storage.get("push:"+session.deviceId);
+      return json({available:enabled,publicKey:enabled?this.env.VAPID_PUBLIC_KEY:null,
+        enabled:!!enabled&&!!saved,
+        scope:this.owner(session)?"owner":"guest"});
+    }
+    if(url.pathname==="/v1/push/unsubscribe" && req.method==="POST"){
+      await this.state.storage.delete("push:"+session.deviceId);
+      return json({enabled:false});
+    }
+    if(url.pathname==="/v1/push/subscribe" && req.method==="POST"){
+      if(!pushConfigured(this.env))return fail(503,"Push notifications are not configured.");
+      const expected=this.owner(session)?this.env.APP_ORIGIN:this.env.GUEST_ORIGIN;
+      const origin=req.headers.get("Origin");
+      if(origin!==expected)return fail(403,"Device origin does not match its account.");
+      if(!this.owner(session)){
+        const threadList=await this.state.storage.list({prefix:"thread:"});
+        if(![...threadList.values()].some(t=>t.guest===session.deviceId))
+          return fail(403,"Join a conversation before enabling notifications.");
+      }
+      const input=await body(req);
+      let subscription;
+      try{subscription=normalizePushSubscription(input.subscription);}
+      catch{return fail(400,"Unsupported push subscription endpoint or keys.");}
+      const rateKey="push-register:"+session.deviceId+":"+day();
+      const current=await this.state.storage.get("push:"+session.deviceId);
+      if(current?.subscription.endpoint===subscription.endpoint &&
+        current?.subscription.keys.p256dh===subscription.keys.p256dh &&
+        current?.subscription.keys.auth===subscription.keys.auth)
+        return json({enabled:true});
+      const allowed=await this.state.storage.transaction(async txn=>{
+        const count=Number(await txn.get(rateKey)||0);
+        if(count>=10)return false;
+        await txn.put(rateKey,count+1);
+        await txn.put("push:"+session.deviceId,{subscription,origin,registeredAt:iso()});
+        return true;
+      });
+      return allowed?json({enabled:true}):fail(429,"Too many notification registrations.");
+    }
 
     // The independent account protocol remains disabled until reviewed.
     // This cannot grant owner privileges in the existing guest-contact pilot.
@@ -311,7 +367,7 @@ export class NoemaRelayRoom {
         if (previous) {
           if (previous.content!==content || (previous.sender==="agent")!==asAgent)
             return {code:"ID_CONFLICT"};
-          return {message:previous};
+          return {message:previous,newMessage:false};
         }
         if (asAgent) {
           const policy=await txn.get("policy:"+session.deviceId)||policyDefault();
@@ -330,11 +386,17 @@ export class NoemaRelayRoom {
         await txn.put(msgKey(id,nextSeq),message);
         await txn.put(dedupe,message);
         await txn.put(threadKey(id),{...fresh,nextSeq,updatedAt:message.createdAt});
-        return {message};
+        return {message,newMessage:true};
       });
       if(result.code) return fail(result.code==="ID_CONFLICT"?409:403,
         "Message rejected by conversation permissions.",result.code);
-      return json(result,201);
+      if(result.newMessage && pushConfigured(this.env)) {
+        const other=session.deviceId===thread.owner?thread.guest:thread.owner;
+        const task=this.notifyRecipient(other).catch(()=>{ /* no content in logs */ });
+        if(typeof this.state.waitUntil==="function")this.state.waitUntil(task);
+        else await task;
+      }
+      return json({message:result.message},201);
     }
     return fail(405,"Unsupported method.");
   }

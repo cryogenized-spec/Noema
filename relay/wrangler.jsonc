@@ -23,6 +23,7 @@
     "GUEST_ORIGIN": "https://noema-guest.vercel.app",
     "OWNER_DEVICE_ID": "",
     "ACCOUNT_REGISTRATION_ENABLED": "false",
-    "ACCOUNT_MAILBOX_ENABLED": "false"
+    "ACCOUNT_MAILBOX_ENABLED": "false",
+    "PUSH_ENABLED": "false"
   }
 }

@@ -6,7 +6,7 @@ This is the current technical and release reference. The repository's older vert
 
 `main` contains merged PRs [#38](https://github.com/cryogenized-spec/Noema/pull/38) (responsive shell, AI Studio, model catalogue, local Workshop and Signals), [#42](https://github.com/cryogenized-spec/Noema/pull/42) (encrypted Contact, signed device sessions, one-use invites, explicit opt-in AI Reception, and guest interface), [#43](https://github.com/cryogenized-spec/Noema/pull/43) (identity/account pairing prototypes disabled by default), and [#30](https://github.com/cryogenized-spec/Noema/pull/30) (local conversation isolation, request cancellation, vault and microphone lifecycle, Markdown and export safety). PR #45's public guest and chat-first work was merged into #42 before #42 merged into main.
 
-The Contact UI gives priority to the message timeline and composer. It hides unnecessary persistent setup/status bodies, puts owner invitations and Reception controls behind sections, and uses a compact conversation selector. This is distinct from the local AI Chat workspace.
+The Contact UI prioritizes the conversation timeline and composer. It has a responsive Contacts list, edge-aware message menus, global unread indicator, and browser-local display sizing controls. Owner invitations and AI Reception are subordinate to the chat. This is distinct from the local AI Chat workspace.
 
 ## Stable application URLs and isolation
 
@@ -36,3 +36,14 @@ Independent account enrollment, mailbox and multi-device key recovery remain **d
 3. Validate account ownership, independent device enrollment, rotation/revocation and account-scoped ciphertext key envelopes before enabling enrollment flags.
 4. Resume Android Capacitor debug APK work from [draft #37](https://github.com/cryogenized-spec/Noema/pull/37) after the PWA-first messaging gates; that branch was deliberately not merged.
 5. Continue to subordinate configuration and notices to the conversation; use dropdowns/settings instead of permanent banners.
+
+## 19 November — Web Push implementation gate
+
+PR #53 (feature branch) adds device-authenticated Web Push subscriptions, a
+WebCrypto/VAPID encrypted sender, origin-scoped service workers for both owner
+and guest, and user-initiated enable/disable controls. The transport payload is
+always `{"title":"New NOEMA message"}`, with no message plaintext or IDs.
+The Cloudflare Worker must be deployed separately, have VAPID keys configured
+server-side and explicitly set `PUSH_ENABLED=true`. A merged PWA alone does
+**not** mean background push is operational. A real owner/guest mobile test
+remains mandatory before marking Web Push live or promising device delivery.
