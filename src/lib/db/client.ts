@@ -8,6 +8,7 @@ import type { TaskRecord } from "@/types/tasks";
 import type { CalendarEventRecord } from "@/types/calendar";
 import type { WorkshopProfile } from "@/types/profile";
 import type { ContactKeyRecord } from "@/types/contact";
+import type { ContactOutboxRecord } from "@/types/contact-outbox";
 import type { LocalIdentityDraft } from "@/types/identity";
 import type { RssArticle, RssFolder, RssSubscription } from "@/types/rss";
 
@@ -21,6 +22,7 @@ class NoemaDatabase extends Dexie {
   calendarEvents!: EntityTable<CalendarEventRecord, "id">;
   profiles!: EntityTable<WorkshopProfile, "id">;
   contactKeys!: EntityTable<ContactKeyRecord, "id">;
+  contactOutbox!: EntityTable<ContactOutboxRecord, "id">;
   identityDrafts!: EntityTable<LocalIdentityDraft, "id">;
   rssSubscriptions!: EntityTable<RssSubscription, "id">;
   rssFolders!: EntityTable<RssFolder, "id">;
@@ -148,6 +150,8 @@ class NoemaDatabase extends Dexie {
 
     // Local-only onboarding preferences, not a server account or membership.
     this.version(13).stores({ identityDrafts: "id, updatedAt" });
+    // Ciphertext-only durable outbox; no plaintext drafts or key material.
+    this.version(14).stores({ contactOutbox: "id, deviceId, threadId, createdAt" });
   }
 }
 
