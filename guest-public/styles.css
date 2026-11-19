@@ -4,3 +4,8 @@
 .push-toggle{border:1px solid #364237;background:#171e19;color:#d9f5cf;border-radius:9px;min-height:40px;min-width:40px;display:flex;align-items:center;justify-content:center;font-size:17px}
 .push-toggle[hidden]{display:none}
 .push-toggle:hover{border-color:#91b67b;background:#222d22}
+
+.older-messages{align-self:center;flex-shrink:0;min-height:36px;border:1px solid #35433b;
+  background:#18201a;color:#c3e4bd;border-radius:9px;padding:7px 13px;font-size:12px}
+.older-messages:hover{background:#243228;border-color:#70916e}
+.older-messages:disabled{opacity:.55;cursor:default}
