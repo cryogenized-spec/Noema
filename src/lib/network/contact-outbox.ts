@@ -10,6 +10,9 @@ const LIMIT=32;
 export const outboxId=(deviceId:string,threadId:string,clientId:string)=>
   deviceId+":"+threadId+":"+clientId;
 export function validQueuedEnvelope(item:ContactOutboxRecord):boolean {
+  const allowed=new Set(["id","deviceId","threadId","keyId","clientMessageId","ciphertext","createdAt","blocked"]);
+  if(Object.keys(item).some(key=>!allowed.has(key)))return false;
+  if(item.blocked!==undefined && typeof item.blocked!=="boolean")return false;
   return ID.test(item.deviceId)&&ID.test(item.threadId)&&ID.test(item.keyId)&&
     ID.test(item.clientMessageId)&&item.id===outboxId(item.deviceId,item.threadId,item.clientMessageId) &&
     ENVELOPE.test(item.ciphertext)&&item.ciphertext.length<=8000&&
