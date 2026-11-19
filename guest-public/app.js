@@ -419,7 +419,8 @@ async function loadMessages(){
   lastRendered=stamp;
 }
 async function refresh(){
-  if(pollBusy||document.visibilityState==="hidden"||!session||token)return;
+  if(pollBusy||document.visibilityState==="hidden"||token)return;
+  if(!session && !navigator.onLine)return;
   pollBusy=true;
   try{
     if(!session)await authenticate();
