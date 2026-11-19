@@ -203,7 +203,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     }));
     if(alive.current && selectedRef.current===thread.id &&
        requestId===messageLoadSequence.current) {
-      const sameThread=loadedThreadRef.current===thread.id;
+      const sameThread=loadedThreadRef.current===thread.id && messageCacheRef.current.length>0;
       const merged=mergeMessagePages(sameThread?messageCacheRef.current:[],rendered);
       loadedThreadRef.current=thread.id;
       messageCacheRef.current=merged;
