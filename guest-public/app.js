@@ -4,6 +4,7 @@ import {
 } from "./crypto.mjs";
 import {createTimelineGuard,createDraftBuffer} from "./timeline.mjs";
 import {mergeMessagePages} from "./history.mjs";
+import {outboxKey,validOutboxRecord,permanentDeliveryFailure} from "./outbox.mjs";
 
 const RELAY="https://noema-contact-relay-staging.cryogenized.workers.dev";
 const DB_NAME="noema-guest-identity-v1";
@@ -22,7 +23,8 @@ const invitationToken=()=>{
 };
 let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
-let pendingSend=null,lastRendered="";
+let lastRendered="";
+let queued=[],queueBusy=false,lastQueueAttempt=0;
 let historyThread="",messageCache=[],hasOlder=false,olderBusy=false;
 const timeline=createTimelineGuard(), drafts=createDraftBuffer();
 let reauth=null,pushConfiguration=null,pushBusy=false;
@@ -136,6 +138,86 @@ async function get(id){
   });
 }
 const put=(v)=>withStore("readwrite",s=>{s.put(v);});
+const erase=(id)=>withStore("readwrite",s=>{s.delete(id);});
+const getEntries=(prefix)=>withStore("readonly",store=>{
+  const found=[];
+  const range=IDBKeyRange.bound(prefix,prefix+"\uffff");
+  const req=store.openCursor(range);
+  req.onsuccess=()=>{
+    const cursor=req.result;
+    if(cursor){found.push(cursor.value);cursor.continue();}
+  };
+  return found;
+});
+async function readQueued(){
+  if(!device)return [];
+  const rows=await getEntries("outbox:"+device.deviceId+":");
+  queued=rows.filter(validOutboxRecord).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+  return queued;
+}
+async function saveQueue(item){
+  if(!validOutboxRecord(item)||item.deviceId!==device?.deviceId)
+    throw Error("Encrypted outbox record invalid");
+  const all=await readQueued();
+  if(all.some(x=>x.id===item.id)){
+    const existing=all.find(x=>x.id===item.id);
+    if(existing.ciphertext!==item.ciphertext)throw Error("Message ID collision");
+    return;
+  }
+  if(all.length>=32)throw Error("Encrypted outbox full; retry or discard queued messages");
+  await put(item);
+  await readQueued();
+}
+async function deliverQueued(item){
+  if(!device||!session||item.deviceId!==device.deviceId) return "pending";
+  try{
+    await api("/v1/threads/"+encodeURIComponent(item.threadId)+"/messages","POST",{
+      clientMessageId:item.clientMessageId,content:item.ciphertext,
+    });
+    await erase(item.id);
+    return "sent";
+  }catch(e){
+    if(permanentDeliveryFailure(e.status)){
+      await put({...item,blocked:true});
+      return "blocked";
+    }
+    return "pending";
+  }
+}
+async function flushQueue(force=false){
+  if(queueBusy||!device||!session||!navigator.onLine||document.visibilityState!=="visible"||
+      (!force&&Date.now()-lastQueueAttempt<15000))return;
+  queueBusy=true;lastQueueAttempt=Date.now();
+  try{
+    for(const item of (await readQueued()).filter(x=>!x.blocked).slice(0,4)){
+      const result=await deliverQueued(item);
+      if(result==="pending")break;
+    }
+  }finally{queueBusy=false;await readQueued();paintMessageHistory();}
+}
+async function restoreCachedThreads(){
+  if(!device)return;
+  const rows=await getEntries("thread:");
+  const restored=rows.filter(x=>validID(x.threadId)&&validID(x.keyId))
+    .map(x=>x.thread||{
+      id:x.threadId,keyId:x.keyId,ownerAlias:"Private contact",
+      guest:device.deviceId,owner:"",nextSeq:0,
+    }).filter(x=>validID(x.id)&&validID(x.keyId));
+  if(restored.length && !allThreads.length){
+    allThreads=restored;
+    if(!selected)selectThread(restored[0].id);
+    renderTabs();renderPanels();
+  }
+}
+async function cacheThreadRoster(items){
+  await withStore("readwrite",store=>{
+    for(const thread of items){
+      if(validID(thread.id)&&validID(thread.keyId))
+        store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId,thread});
+    }
+  });
+}
+
 
 async function identity(){
   const saved=await get("device");
@@ -167,7 +249,7 @@ async function api(path,method="GET",payload,auth=true,retry=true){
   }
   let result;
   try{result=await response.json();}catch{throw Error("NOEMA relay is not responding");}
-  if(!response.ok)throw Error(String(result.error||"NOEMA request was rejected"));
+  if(!response.ok){const error=Error(String(result.error||"NOEMA request was rejected"));error.status=response.status;throw error;}
   return result;
 }
 async function authenticate(force=false){
