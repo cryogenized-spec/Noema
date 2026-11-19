@@ -22,8 +22,9 @@ const call=(origin,path,method="GET",requestMethod)=>{
 
 test("public invite guest origin may preflight auth, redeem and encrypted chat",async()=>{
   for(const path of ["/v1/auth/challenge","/v1/auth/verify","/v1/invites/redeem",
-    "/v1/threads","/v1/threads/abcdefghijklmnop/messages"]){
-    const method=["/v1/threads"].includes(path)?"GET":"POST";
+    "/v1/threads","/v1/threads/abcdefghijklmnop/messages",
+    "/v1/push/config","/v1/push/subscribe","/v1/push/unsubscribe"]){
+    const method=["/v1/threads","/v1/push/config"].includes(path)?"GET":"POST";
     const r=await call(guest,path,"OPTIONS",method);
     assert.equal(r.status,204,method+" "+path);
     assert.equal(r.headers.get("Access-Control-Allow-Origin"),guest);
@@ -46,4 +47,11 @@ test("existing owner origin unchanged, and unrelated origins rejected",async()=>
   assert.equal((await call(owner,"/v1/invites","OPTIONS","POST")).status,204);
   assert.equal((await call("https://evil.example","/v1/auth/challenge","OPTIONS","POST")).status,403);
   assert.equal((await call("https://noema-guest.vercel.app.evil.test","/v1/threads","GET")).status,403);
+});
+
+test("guest push route is still signed and cannot access other device subscriptions",async()=>{
+  assert.equal((await call(guest,"/v1/push/config")).status,401);
+  assert.equal((await call(guest,"/v1/push/subscribe","POST")).status,401);
+  assert.equal((await call(guest,"/v1/push/unsubscribe","POST")).status,401);
+  assert.equal((await call("https://noema-guest.vercel.app.evil.org","/v1/push/config")).status,403);
 });
