@@ -3,6 +3,7 @@ import {
   deviceProofBytes,seal,open,
 } from "./crypto.mjs";
 import {createTimelineGuard,createDraftBuffer} from "./timeline.mjs";
+import {mergeMessagePages} from "./history.mjs";
 
 const RELAY="https://noema-contact-relay-staging.cryogenized.workers.dev";
 const DB_NAME="noema-guest-identity-v1";
@@ -22,6 +23,7 @@ const invitationToken=()=>{
 let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
 let pendingSend=null,lastRendered="";
+let historyThread="",messageCache=[],hasOlder=false,olderBusy=false;
 const timeline=createTimelineGuard(), drafts=createDraftBuffer();
 let reauth=null,pushConfiguration=null,pushBusy=false;
 const supportsPush=()=>window.isSecureContext && "Notification" in window &&
@@ -198,6 +200,10 @@ function selectThread(id){
   timeline.select(id);
   ui.message.value=drafts.get(id);
   lastRendered="";
+  historyThread=id;
+  messageCache=[];
+  hasOlder=false;
+  olderBusy=false;
 }
 function renderTabs(){
   ui.threads.replaceChildren();
@@ -229,23 +235,26 @@ async function threadSecret(thread){
   if(!stored?.key)throw Error("This device has no key for this conversation");
   return stored.key;
 }
-async function loadMessages(){
-  const thread=allThreads.find(x=>x.id===selected);
-  if(!thread)return;
-  const current=timeline.begin(thread.id);
-  const result=await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages?after=0");
-  if(!current())return;
-  const stamp=thread.id+":"+result.nextSeq;
-  if(stamp===lastRendered)return;
+async function decryptPage(thread,messages){
   const key=await threadSecret(thread);
-  const fragments=await Promise.all(result.messages.map(async m=>{
+  return Promise.all(messages.map(async m=>{
     try{return {...m,text:await open(key,thread.id,m.clientMessageId,m.content)};}
     catch{return {...m,text:"[Unable to decrypt on this device]"};}
   }));
-  if(!current())return;
-  const nearBottom=ui.messages.scrollHeight-ui.messages.scrollTop-ui.messages.clientHeight<100;
+}
+function paintMessageHistory(prepend=false){
+  const beforeHeight=ui.messages.scrollHeight, beforeTop=ui.messages.scrollTop;
+  const nearBottom=beforeHeight-beforeTop-ui.messages.clientHeight<100;
   ui.messages.replaceChildren();
-  for(const message of fragments){
+  if(hasOlder){
+    const more=document.createElement("button");
+    more.type="button";more.className="older-messages";
+    more.textContent=olderBusy?"Loading…":"Load older messages";
+    more.disabled=olderBusy;
+    more.addEventListener("click",()=>void loadOlderMessages());
+    ui.messages.append(more);
+  }
+  for(const message of messageCache){
     const bubble=document.createElement("div");
     bubble.className="bubble"+(message.sender==="guest"?" mine":"");
     const text=document.createElement("span");
@@ -256,8 +265,50 @@ async function loadMessages(){
     bubble.append(text,date);
     ui.messages.append(bubble);
   }
+  if(prepend)ui.messages.scrollTop=beforeTop+(ui.messages.scrollHeight-beforeHeight);
+  else if(nearBottom || lastRendered==="")ui.messages.scrollTop=ui.messages.scrollHeight;
+  else ui.messages.scrollTop=beforeTop;
+}
+async function loadOlderMessages(){
+  const thread=allThreads.find(x=>x.id===selected);
+  const before=messageCache[0]?.seq;
+  if(!thread||!hasOlder||olderBusy||!Number.isSafeInteger(before)||before<=1)return;
+  olderBusy=true;
+  const current=timeline.begin(thread.id);
+  paintMessageHistory();
+  try{
+    const page=await api("/v1/threads/"+encodeURIComponent(thread.id)+
+      "/messages?before="+encodeURIComponent(String(before)));
+    if(!current())return;
+    const older=await decryptPage(thread,page.messages);
+    if(!current()||historyThread!==thread.id)return;
+    messageCache=mergeMessagePages(messageCache,older);
+    hasOlder=page.hasMore===true;
+    olderBusy=false;
+    paintMessageHistory(true);
+  }catch(e){if(current())status(serverError(e));}
+  finally{
+    olderBusy=false;
+    if(current())paintMessageHistory();
+  }
+}
+async function loadMessages(){
+  const thread=allThreads.find(x=>x.id===selected);
+  if(!thread)return;
+  const current=timeline.begin(thread.id);
+  const result=await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages?after=0");
+  if(!current())return;
+  const stamp=thread.id+":"+result.nextSeq;
+  if(stamp===lastRendered)return;
+  const fragments=await decryptPage(thread,result.messages);
+  if(!current())return;
+  const sameThread=historyThread===thread.id;
+  messageCache=mergeMessagePages(sameThread?messageCache:[],fragments);
+  if(!sameThread){historyThread=thread.id;hasOlder=result.hasMore===true;}
+  else if(messageCache.length===fragments.length)
+    hasOlder=result.hasMore===true;
   ui.recipient.textContent=word(thread.ownerAlias)||"Your contact";
-  if(nearBottom || lastRendered==="")ui.messages.scrollTop=ui.messages.scrollHeight;
+  paintMessageHistory();
   lastRendered=stamp;
 }
 async function refresh(){
