@@ -9,3 +9,8 @@
   background:#18201a;color:#c3e4bd;border-radius:9px;padding:7px 13px;font-size:12px}
 .older-messages:hover{background:#243228;border-color:#70916e}
 .older-messages:disabled{opacity:.55;cursor:default}
+
+/* Pending encrypted messages do not expose message text in the outbox UI. */
+.queued-row{align-self:flex-end;display:flex;align-items:center;flex-wrap:wrap;gap:7px;max-width:94%;border:1px dashed #536454;border-radius:9px;padding:7px 9px;font-size:12px;color:#bdcdbd}
+.queued-row button{min-height:32px;border:1px solid #4c624f;border-radius:7px;background:#1b271d;color:#e2efdf;padding:4px 9px}
+.queued-row button:disabled{opacity:.5}

@@ -4,6 +4,7 @@ import {
 } from "./crypto.mjs";
 import {createTimelineGuard,createDraftBuffer} from "./timeline.mjs";
 import {mergeMessagePages} from "./history.mjs";
+import {outboxKey,validOutboxRecord,permanentDeliveryFailure} from "./outbox.mjs";
 
 const RELAY="https://noema-contact-relay-staging.cryogenized.workers.dev";
 const DB_NAME="noema-guest-identity-v1";
@@ -22,7 +23,8 @@ const invitationToken=()=>{
 };
 let token=invitationToken(),inviteSecret=inviteKeyFromHash(location.hash);
 let device=null,session=null,allThreads=[],selected="",busy=false,pollBusy=false;
-let pendingSend=null,lastRendered="";
+let lastRendered="";
+let queued=[],queueBusy=false,lastQueueAttempt=0;
 let historyThread="",messageCache=[],hasOlder=false,olderBusy=false;
 const timeline=createTimelineGuard(), drafts=createDraftBuffer();
 let reauth=null,pushConfiguration=null,pushBusy=false;
@@ -136,6 +138,86 @@ async function get(id){
   });
 }
 const put=(v)=>withStore("readwrite",s=>{s.put(v);});
+const erase=(id)=>withStore("readwrite",s=>{s.delete(id);});
+const getEntries=(prefix)=>withStore("readonly",store=>{
+  const found=[];
+  const range=IDBKeyRange.bound(prefix,prefix+"\uffff");
+  const req=store.openCursor(range);
+  req.onsuccess=()=>{
+    const cursor=req.result;
+    if(cursor){found.push(cursor.value);cursor.continue();}
+  };
+  return found;
+});
+async function readQueued(){
+  if(!device)return [];
+  const rows=await getEntries("outbox:"+device.deviceId+":");
+  queued=rows.filter(validOutboxRecord).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+  return queued;
+}
+async function saveQueue(item){
+  if(!validOutboxRecord(item)||item.deviceId!==device?.deviceId)
+    throw Error("Encrypted outbox record invalid");
+  const all=await readQueued();
+  if(all.some(x=>x.id===item.id)){
+    const existing=all.find(x=>x.id===item.id);
+    if(existing.ciphertext!==item.ciphertext)throw Error("Message ID collision");
+    return;
+  }
+  if(all.length>=32)throw Error("Encrypted outbox full; retry or discard queued messages");
+  await put(item);
+  await readQueued();
+}
+async function deliverQueued(item){
+  if(!device||!session||item.deviceId!==device.deviceId) return "pending";
+  try{
+    await api("/v1/threads/"+encodeURIComponent(item.threadId)+"/messages","POST",{
+      clientMessageId:item.clientMessageId,content:item.ciphertext,
+    });
+    await erase(item.id);
+    return "sent";
+  }catch(e){
+    if(permanentDeliveryFailure(e.status)){
+      await put({...item,blocked:true});
+      return "blocked";
+    }
+    return "pending";
+  }
+}
+async function flushQueue(force=false){
+  if(queueBusy||!device||!session||!navigator.onLine||document.visibilityState!=="visible"||
+      (!force&&Date.now()-lastQueueAttempt<15000))return;
+  queueBusy=true;lastQueueAttempt=Date.now();
+  try{
+    for(const item of (await readQueued()).filter(x=>!x.blocked).slice(0,4)){
+      const result=await deliverQueued(item);
+      if(result==="pending")break;
+    }
+  }finally{queueBusy=false;await readQueued();paintMessageHistory();}
+}
+async function restoreCachedThreads(){
+  if(!device)return;
+  const rows=await getEntries("thread:");
+  const restored=rows.filter(x=>validID(x.threadId)&&validID(x.keyId))
+    .map(x=>x.thread||{
+      id:x.threadId,keyId:x.keyId,ownerAlias:"Private contact",
+      guest:device.deviceId,owner:"",nextSeq:0,
+    }).filter(x=>validID(x.id)&&validID(x.keyId));
+  if(restored.length && !allThreads.length){
+    allThreads=restored;
+    if(!selected)selectThread(restored[0].id);
+    renderTabs();renderPanels();
+  }
+}
+async function cacheThreadRoster(items){
+  await withStore("readwrite",store=>{
+    for(const thread of items){
+      if(validID(thread.id)&&validID(thread.keyId))
+        store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId,thread});
+    }
+  });
+}
+
 
 async function identity(){
   const saved=await get("device");
@@ -167,7 +249,7 @@ async function api(path,method="GET",payload,auth=true,retry=true){
   }
   let result;
   try{result=await response.json();}catch{throw Error("NOEMA relay is not responding");}
-  if(!response.ok)throw Error(String(result.error||"NOEMA request was rejected"));
+  if(!response.ok){const error=Error(String(result.error||"NOEMA request was rejected"));error.status=response.status;throw error;}
   return result;
 }
 async function authenticate(force=false){
@@ -204,6 +286,7 @@ function selectThread(id){
   messageCache=[];
   hasOlder=false;
   olderBusy=false;
+  paintMessageHistory();
 }
 function renderTabs(){
   ui.threads.replaceChildren();
@@ -213,7 +296,7 @@ function renderTabs(){
     tab.type="button";tab.className="thread"+(thread.id===selected?" active":"");
     tab.textContent=word(thread.ownerAlias)||"Private contact";
     tab.title="Open "+tab.textContent;
-    tab.addEventListener("click",()=>{selectThread(thread.id);renderTabs();void loadMessages();});
+tab.addEventListener("click",()=>{selectThread(thread.id);renderTabs();void loadMessages().catch(e=>status(serverError(e)));});
     ui.threads.append(tab);
   }
 }
@@ -265,6 +348,29 @@ function paintMessageHistory(prepend=false){
     bubble.append(text,date);
     ui.messages.append(bubble);
   }
+  for(const item of queued.filter(x=>x.threadId===selected)){
+    const row=document.createElement("div");row.className="queued-row";
+    const label=document.createElement("span");
+    label.textContent=item.blocked?"Not delivered":"Queued · encrypted";
+    const retry=document.createElement("button");retry.type="button";retry.textContent="Retry";
+    retry.setAttribute("aria-label","Retry queued message");
+    retry.addEventListener("click",async()=>{
+      retry.disabled=true;
+      try{
+        const result=await deliverQueued(item);
+        await readQueued();paintMessageHistory();
+        if(result==="sent"){lastRendered="";if(session)await loadMessages();}
+        else status(result==="blocked"?"Delivery rejected; message retained.":"Message remains queued.");
+      }catch(e){status(serverError(e));}finally{retry.disabled=false;}
+    });
+    const discard=document.createElement("button");discard.type="button";discard.textContent="Discard";
+    discard.setAttribute("aria-label","Discard queued message");
+    discard.addEventListener("click",async()=>{
+      try{await erase(item.id);await readQueued();paintMessageHistory();}
+      catch(e){status(serverError(e));}
+    });
+    row.append(label,retry,discard);ui.messages.append(row);
+  }
   if(prepend)ui.messages.scrollTop=beforeTop+(ui.messages.scrollHeight-beforeHeight);
   else if(nearBottom || lastRendered==="")ui.messages.scrollTop=ui.messages.scrollHeight;
   else ui.messages.scrollTop=beforeTop;
@@ -313,16 +419,20 @@ async function loadMessages(){
   lastRendered=stamp;
 }
 async function refresh(){
-  if(pollBusy||document.visibilityState==="hidden"||!session||token)return;
+  if(pollBusy||document.visibilityState==="hidden"||token)return;
+  if(!session && !navigator.onLine)return;
   pollBusy=true;
   try{
+    if(!session)await authenticate();
     const next=await remoteThreads();
     allThreads=next;
+    await cacheThreadRoster(next);
     if(!selected||!next.some(x=>x.id===selected)){
       selectThread(next[0]?.id||"");
     }
     renderTabs();renderPanels();renderPush();
     if(selected)await loadMessages();
+    await flushQueue();
     status("");
   }catch(e){status(serverError(e));}
   finally{pollBusy=false;}
@@ -341,7 +451,7 @@ async function accept(){
     // storage failure must not leave only one half of the saved conversation.
     await withStore("readwrite",store=>{
       store.put({id:"key:"+thread.keyId,key,createdAt:new Date().toISOString()});
-      store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId});
+      store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId,thread});
       store.delete("pending:"+token);
     });
     token="";inviteSecret="";history.replaceState(null,"","/");
@@ -355,27 +465,31 @@ async function accept(){
 }
 async function send(event){
   event.preventDefault();
-  if(busy||!session||!selected)return;
+  if(busy||!device||!selected)return;
   const txt=ui.message.value.trim();
   if(!txt)return;
   const thread=allThreads.find(t=>t.id===selected);
   if(!thread)return;
   busy=true;ui.send.disabled=true;
   try{
-    const same=pendingSend&&pendingSend.threadId===thread.id&&pendingSend.text===txt;
-    const id=same?pendingSend.id:"message-"+crypto.randomUUID().replaceAll("-","");
-    const ciphertext=same?pendingSend.ciphertext:
-      await seal(await threadSecret(thread),thread.id,id,txt);
-    pendingSend={threadId:thread.id,text:txt,id,ciphertext};
-    await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages",
-      "POST",{clientMessageId:id,content:ciphertext});
-    pendingSend=null;
+    const id="message-"+crypto.randomUUID().replaceAll("-","");
+    const ciphertext=await seal(await threadSecret(thread),thread.id,id,txt);
+    const item={
+      id:outboxKey(device.deviceId,thread.id,id),
+      deviceId:device.deviceId,threadId:thread.id,keyId:thread.keyId,
+      clientMessageId:id,ciphertext,createdAt:new Date().toISOString(),
+    };
+    // Persist ciphertext first; never send if local durable storage failed.
+    await saveQueue(item);
     if(drafts.clearIfUnchanged(thread.id,txt) && selected===thread.id)ui.message.value="";
-    if(selected===thread.id){
-      lastRendered="";
-      await loadMessages();
-    }
-    status("");
+    const result=await deliverQueued(item);
+    await readQueued();
+    paintMessageHistory();
+    if(result==="sent"){
+      if(selected===thread.id){lastRendered="";await loadMessages();}
+      status("");
+    }else status(result==="blocked"?"Delivery rejected; retry or discard queued message."
+      :"Encrypted message queued until online.");
   }catch(e){status(serverError(e));}
   finally{busy=false;ui.send.disabled=false;}
 }
@@ -383,6 +497,9 @@ async function init(){
   renderPanels();
   try{
     device=await identity();
+    await restoreCachedThreads();
+    await readQueued();
+    paintMessageHistory();
     await authenticate();
     ui.accept.disabled=false;
     if(token&&!inviteSecret)status("Invitation decryption key is missing.");

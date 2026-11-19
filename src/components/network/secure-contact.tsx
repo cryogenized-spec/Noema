@@ -21,6 +21,8 @@ import {
 } from "@/lib/network/contact-crypto";
 import {latestIncomingSequence, markIncomingRead} from "@/lib/network/contact-unread";
 import {mergeMessagePages} from "@/lib/network/message-history";
+import {listContactOutbox,persistContactOutbox,deliverContactOutbox,discardContactOutbox} from "@/lib/network/contact-outbox";
+import type {ContactOutboxRecord} from "@/types/contact-outbox";
 import {OffsetContactMenu} from "@/components/contact/offset-contact-menu";
 import {readDisplayPreferences,type DisplayPreferences} from "@/lib/ui/display-preferences";
 import type {MenuAnchor} from "@/lib/ui/offset-menu-position";
@@ -55,6 +57,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [contextMenu,setContextMenu]=useState<OpenContactMenu|null>(null);
   const [displayPreferences,setDisplayPreferences]=useState<DisplayPreferences|null>(null);
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
+  const [queuedMessages,setQueuedMessages]=useState<ContactOutboxRecord[]>([]);
   const [historyHasMore,setHistoryHasMore]=useState(false);
   const [olderLoading,setOlderLoading]=useState(false);
   const [alias,setAlias]=useState("");
@@ -72,7 +75,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const working=useRef(false);
   const busyAgent=useRef(false);
   const seenRef=useRef(new Set<string>());
-  const pendingSend=useRef(new Map<string,{text:string;id:string;ciphertext:string}>());
+  const outboxInFlight=useRef(false);
+  const lastOutboxAttempt=useRef(0);
   const messageLoadSequence=useRef(0);
   const loadedThreadRef=useRef("");
   const messageCacheRef=useRef<DecryptedMessage[]>([]);
@@ -255,6 +259,38 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     }
   },[]);
 
+  const refreshQueued=useCallback(async(current:RelaySession)=>{
+    const items=await listContactOutbox(current.deviceId);
+    if(alive.current)setQueuedMessages(items);
+    return items;
+  },[]);
+  const drainOutbox=useCallback(async(current:RelaySession,force=false)=>{
+    if(outboxInFlight.current || (!force && Date.now()-lastOutboxAttempt.current<15000) ||
+      !navigator.onLine || document.visibilityState!=="visible")return;
+    outboxInFlight.current=true;
+    lastOutboxAttempt.current=Date.now();
+    try {
+      const list=await listContactOutbox(current.deviceId);
+      for(const item of list.filter(x=>!x.blocked).slice(0,4)){
+        const result=await deliverContactOutbox(current,item);
+        if(result==="sent"){
+          const thread=threadsRef.current.find(t=>t.id===item.threadId);
+          if(thread && selectedRef.current===thread.id)await loadMessages(current,thread);
+        }
+        if(result==="pending")break;
+      }
+    }catch(e) {
+      if(alive.current)setError(errText(e));
+    }finally {
+      outboxInFlight.current=false;
+      await refreshQueued(current).catch(()=>{});
+    }
+  },[refreshQueued,loadMessages]);
+  useEffect(()=>{
+    if(!session)return;
+    void refreshQueued(session).catch(e=>{if(alive.current)setError(errText(e));});
+  },[session,refreshQueued]);
+
   const receive=useCallback(async(current:RelaySession)=>{
     if(working.current)return;
     working.current=true;
@@ -345,6 +381,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     const tick=async()=>{
       if(!alive.current || document.visibilityState!=="visible" || !readyToPoll.current)return;
       await receive(session);
+      await drainOutbox(session);
       if(isOwner) await processReception(session);
     };
     void tick();
@@ -359,7 +396,7 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
       document.removeEventListener("visibilitychange",onForeground);
       abort.current?.abort();
     };
-  },[session,joined,inviteToken,isOwner,receive,processReception]);
+  },[session,joined,inviteToken,isOwner,receive,drainOutbox,processReception]);
 
   const action=async(fn:()=>Promise<void>)=>{
     if(busy)return;
@@ -397,23 +434,26 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   });
   const send=()=>action(async()=>{
     if(!session || !active || !draft.trim())return;
-    const text=draft.trim();
-    const existing=pendingSend.current.get(active.id);
-    const attempt=existing?.text===text ? existing : null;
-    const id=attempt?.id || clientId();
-    // One ciphertext is generated once and reused for uncertain network retries:
-    // idempotency and AES-GCM authenticated data must refer to the SAME client ID.
-    const ciphertext=attempt?.ciphertext ||
-      await encryptContactMessage(active.keyId,active.id,id,text);
-    const sendingThread=active.id;
-    pendingSend.current.set(sendingThread,{text,id,ciphertext});
-    await relayPostMessage(session,sendingThread,ciphertext,id);
-    pendingSend.current.delete(sendingThread);
-    // A slow send must never erase text typed in another conversation.
-    setDrafts(current=>current[sendingThread]?.trim()===text
-      ? {...current,[sendingThread]:""} : current);
-    if(selectedRef.current===sendingThread)await loadMessages(session,active);
-    setNote("");
+    const text=draft.trim(),thread=active,id=clientId();
+    const ciphertext=await encryptContactMessage(thread.keyId,thread.id,id,text);
+    const item:ContactOutboxRecord={
+      id:session.deviceId+":"+thread.id+":"+id,
+      deviceId:session.deviceId,threadId:thread.id,keyId:thread.keyId,
+      clientMessageId:id,ciphertext,createdAt:new Date().toISOString(),
+    };
+    // Durable commit before ANY network request, including while offline.
+    await persistContactOutbox(item);
+    setDrafts(current=>current[thread.id]?.trim()===text
+      ? {...current,[thread.id]:""} : current);
+    await refreshQueued(session);
+    const result=await deliverContactOutbox(session,item);
+    await refreshQueued(session);
+    if(result==="sent"){
+      if(selectedRef.current===thread.id)await loadMessages(session,thread);
+      setNote("");
+    }else setNote(result==="blocked"
+      ?"Message retained locally. Delivery was rejected; retry or discard."
+      :"Encrypted message queued for delivery when connected.");
   });
   const switchGlobal=()=>action(async()=>{
     if(!session || !isOwner || !policy)return;
@@ -667,6 +707,24 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               onClick={()=>void loadOlder()} aria-label="Load older encrypted messages">
               {olderLoading?"Loading…":"Load older messages"}
             </button>}
+            {queuedMessages.filter(item=>item.threadId===active.id).map(item=>
+              <div key={item.id} className="ml-auto flex max-w-[92%] items-center gap-2 rounded-lg border border-dashed border-noema-border px-2 py-1.5 text-xs text-neutral-400">
+                <span>{item.blocked?"Not delivered":"Queued · encrypted"}</span>
+                <button type="button" className="rounded-md border border-noema-border px-2 py-1 hover:text-white"
+                  aria-label="Retry queued message" onClick={()=>void action(async()=>{
+                    if(!session)return;
+                    const result=await deliverContactOutbox(session,item);
+                    await refreshQueued(session);
+                    if(result==="sent")await loadMessages(session,active);
+                    else setNote("Message remains queued.");
+                  })}>Retry</button>
+                <button type="button" className="rounded-md border border-noema-border px-2 py-1 hover:text-white"
+                  aria-label="Discard queued message" onClick={()=>void action(async()=>{
+                    await discardContactOutbox(item);
+                    if(session)await refreshQueued(session);
+                  })}>Discard</button>
+              </div>
+            )}
             {messages.map(msg=><div key={msg.id}
               className={"group relative w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
                 ((ownerThread?msg.sender!=="guest":msg.sender==="guest")

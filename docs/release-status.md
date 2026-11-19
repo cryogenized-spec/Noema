@@ -76,3 +76,29 @@ further automatic retries. The owner key itself is never rotated by this
 recovery path, and no message plaintext enters session storage. A lost or
 damaged private device key still requires an explicit recovery design; it
 cannot be silently recreated.
+
+
+## 19 November — encrypted offline outbox pilot
+
+The owner app and public guest PWA now **commit each encrypted envelope to
+browser IndexedDB before attempting its first relay POST**. Outbox records
+contain the signed device identity, conversation/key identifier, original
+client message ID, timestamp, and ciphertext only. No plaintext, access
+token, raw invitation secret or private key is persisted in the outbox.
+After an uncertain delivery the same ciphertext and client ID are retried:
+the Cloudflare relay's per-device deduplication prevents duplicate messages.
+
+When the app is visible and connectivity returns, pending envelopes are
+retried in small, throttled batches; each conversation also shows compact
+**Queued / Retry / Discard** controls. Explicit server rejection pauses
+automatic replay for that record until its user retries or discards it.
+A browser reload preserves pending encrypted records and their message IDs.
+The guest PWA also keeps a local conversation pointer to allow creating an
+encrypted queued message while offline after reopening.
+
+**Scope:** foreground recovery, not guaranteed closed-PWA background upload
+or universal offline delivery. The browser retains the original non-extractable
+conversation key; clearing site data, switching origins or losing that key
+can make pending ciphertext unavailable. These are device-local pending
+envelopes, not server-side backups. A real-device offline/reload/reconnect
+acceptance test remains required before treating recovery as fully validated.
