@@ -293,6 +293,7 @@ async function loadOlderMessages(){
   }
 }
 async function loadMessages(){
+  if(olderBusy)return; // Do not invalidate a pending older-page load with a routine poll.
   const thread=allThreads.find(x=>x.id===selected);
   if(!thread)return;
   const current=timeline.begin(thread.id);
