@@ -185,3 +185,80 @@ test("new guest contacts and their encrypted messages are visible to the owner",
   assert.equal(updatedInbox.body.threads[0].nextSeq,1);
   assert.ok(Date.parse(updatedInbox.body.threads[0].updatedAt)>0);
 });
+
+
+test("push is fail-closed without VAPID keys and cannot register anonymous devices",async()=>{
+  const {room,owner,store}=await setup();
+  const config=await call(room,"/v1/push/config",{},owner.token,"GET");
+  assert.equal(config.status,200);
+  assert.deepEqual(config.body,{available:false,publicKey:null,enabled:false,scope:"owner"});
+  assert.equal((await call(room,"/v1/push/subscribe",{subscription:{}},owner.token)).status,503);
+  assert.equal((await call(room,"/v1/push/unsubscribe",{},owner.token)).status,200);
+  assert.equal([...store.data.keys()].some(key=>key.startsWith("push:")),false);
+  assert.equal((await call(room,"/v1/push/config",{},"","GET")).status,401);
+});
+
+test("push delivers one generic encrypted wake to other participant, never to sender, only with opt-in",async()=>{
+  const {room,owner,guest,attacker,id,store,env}=await threadSetup();
+  env.APP_ORIGIN="https://noema-contact-staging.vercel.app";
+  env.GUEST_ORIGIN="https://noema-guest.vercel.app";
+  const keyPair=await crypto.subtle.generateKey(
+    {name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
+  const pub=new Uint8Array(await crypto.subtle.exportKey("raw",keyPair.publicKey));
+  const priv=await crypto.subtle.exportKey("jwk",keyPair.privateKey);
+  env.PUSH_ENABLED="true";
+  env.VAPID_PUBLIC_KEY=b64url(pub);
+  env.VAPID_PRIVATE_KEY=priv.d;
+  env.VAPID_SUBJECT="mailto:push-admin@example.com";
+  const sub=async who=>{
+    const receiver=await crypto.subtle.generateKey(
+      {name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+    const key=await crypto.subtle.exportKey("raw",receiver.publicKey);
+    return {endpoint:"https://fcm.googleapis.com/fcm/send/noema-"+who+"-testing-123",
+      keys:{p256dh:b64url(new Uint8Array(key)),
+        auth:b64url(crypto.getRandomValues(new Uint8Array(16)))}};
+  };
+  const ownerSub=await sub("owner");
+  const guestSub=await sub("guest");
+  const pushCall=async(device,path,subscription,origin)=>{
+    const response=await room.fetch(new Request(ROOT+path,{
+      method:"POST",headers:{"Content-Type":"application/json",
+        "Authorization":"Bearer "+device.token,"Origin":origin},
+      body:JSON.stringify(subscription?{subscription}:{}),
+    }));
+    return {status:response.status,body:await response.json()};
+  };
+  const ownerOrigin=env.APP_ORIGIN,guestOrigin=env.GUEST_ORIGIN;
+  assert.equal((await pushCall(owner,"/v1/push/subscribe",ownerSub,guestOrigin)).status,403);
+  assert.equal((await pushCall(attacker,"/v1/push/subscribe",guestSub,guestOrigin)).status,403,
+    "Uninvited accounts cannot create push recipients");
+  assert.equal((await pushCall(owner,"/v1/push/subscribe",ownerSub,ownerOrigin)).status,200);
+  assert.equal((await pushCall(guest,"/v1/push/subscribe",guestSub,guestOrigin)).status,200);
+  assert.equal((await pushCall(guest,"/v1/push/subscribe",guestSub,guestOrigin)).status,200);
+  const ownerConfig=await call(room,"/v1/push/config",{},owner.token,"GET");
+  assert.equal(ownerConfig.body.available,true);
+  assert.equal(ownerConfig.body.enabled,true);
+  assert.equal(ownerConfig.body.publicKey,env.VAPID_PUBLIC_KEY);
+  const senderCalls=[];
+  const fetchBefore=globalThis.fetch;
+  globalThis.fetch=async(url,params)=>{
+    senderCalls.push({url,params});
+    return new Response(null,{status:201});
+  };
+  try{
+    const input={content:ENCRYPTED,clientMessageId:"push-guest-message-12345"};
+    const target="/v1/threads/"+id+"/messages";
+    assert.equal((await call(room,target,input,guest.token)).status,201);
+    assert.equal(senderCalls.length,1);
+    assert.equal(senderCalls[0].url,ownerSub.endpoint);
+    assert.equal((await call(room,target,input,guest.token)).status,201);
+    assert.equal(senderCalls.length,1,"Idempotent message retries cannot spam push");
+    assert.equal((await call(room,target,{content:ENCRYPTED,clientMessageId:"push-owner-message-12345"},owner.token)).status,201);
+    assert.equal(senderCalls.length,2);
+    assert.equal(senderCalls[1].url,guestSub.endpoint);
+    assert.equal((await pushCall(owner,"/v1/push/unsubscribe",null,ownerOrigin)).status,200);
+    assert.equal(store.data.has("push:"+owner.deviceId),false);
+    assert.equal((await call(room,target,{content:ENCRYPTED,clientMessageId:"push-guest-message-22222"},guest.token)).status,201);
+    assert.equal(senderCalls.length,2,"Opted-out owner receives no new push");
+  }finally{globalThis.fetch=fetchBefore;}
+});
