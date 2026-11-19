@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import {ContactPushSettings} from "@/components/settings/contact-push-settings";
 import { Icon } from "@iconify/react";
 import { PROVIDER_CATALOG } from "@/lib/providers/catalog";
 import { useLockboxStore } from "@/store/lockbox-store";
@@ -67,7 +68,7 @@ export function ApiLockboxScreen() {
     updateRememberLastProvider,
   } = useSttStore();
   const [openProviderId, setOpenProviderId] = useState<string | null>(PROVIDER_CATALOG[0]?.id ?? null);
-  const [activeSettingsTab, setActiveSettingsTab] = useState<"vault" | "models" | "voice" | "integrations" | "display">("vault");
+  const [activeSettingsTab, setActiveSettingsTab] = useState<"vault" | "models" | "voice" | "integrations" | "display" | "notifications">("vault");
   const [displayPrefs,setDisplayPrefs]=useState<DisplayPreferences>(DEFAULT_DISPLAY_PREFERENCES);
   const changeDisplay=<K extends keyof DisplayPreferences>(key:K,value:DisplayPreferences[K])=>{
     setDisplayPrefs(current=>saveDisplayPreferences({...current,[key]:value}));
@@ -144,6 +145,7 @@ export function ApiLockboxScreen() {
           ["voice", "Voice"],
           ["integrations", "Links"],
           ["display", "Display"],
+          ["notifications", "Alerts"],
         ] as const).map(([id, title]) => (
           <button key={id} type="button" aria-current={activeSettingsTab === id ? "page" : undefined}
             onClick={() => setActiveSettingsTab(id)}
@@ -475,6 +477,7 @@ export function ApiLockboxScreen() {
         Connectors (future): GitHub, Notion, Drive, and storage integrations will appear here.
       </section>
         )}
+        {activeSettingsTab === "notifications" && <ContactPushSettings />}
         {activeSettingsTab === "display" && (
           <div className="space-y-4 rounded-xl border border-noema-border bg-[#111113] p-3 sm:p-4">
             <div className="flex items-center justify-between gap-3">
