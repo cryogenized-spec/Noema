@@ -63,3 +63,16 @@ This restores access to older *server-retained ciphertext* from the same
 authenticated browser with its original contact key. It is **not** offline
 message storage, key backup, forward secrecy, or cross-device recovery.
 Keep the original browser origin and its IndexedDB contact keys intact.
+
+
+## Owner Contact signed-session renewal
+
+The owner browser now attempts **one signed reauthentication** if an
+authenticated relay request receives HTTP 401. Concurrent requests share the
+same challenge exchange. The renewed token can only replace a previous session
+for the **same non-extractable device identity**, and unrelated-device tokens,
+permission denials, already-retried calls and aborted requests do not trigger
+further automatic retries. The owner key itself is never rotated by this
+recovery path, and no message plaintext enters session storage. A lost or
+damaged private device key still requires an explicit recovery design; it
+cannot be silently recreated.
