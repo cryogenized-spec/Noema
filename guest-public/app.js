@@ -282,11 +282,11 @@ function selectThread(id){
   timeline.select(id);
   ui.message.value=drafts.get(id);
   lastRendered="";
-  paintMessageHistory();
   historyThread=id;
   messageCache=[];
   hasOlder=false;
   olderBusy=false;
+  paintMessageHistory();
 }
 function renderTabs(){
   ui.threads.replaceChildren();
