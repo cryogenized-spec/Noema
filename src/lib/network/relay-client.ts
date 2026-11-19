@@ -1,6 +1,9 @@
 "use client";
 
 import { getOrCreateDeviceIdentity, signDeviceChallenge } from "@/lib/security/device-identity";
+import {
+  sameDeviceSession,newerSameDeviceSession,mayRenewRelayAuth,
+} from "@/lib/network/session-recovery";
 
 export interface RelaySession {
   token: string;
@@ -36,20 +39,36 @@ export const relayAvailable = /^https:\/\//.test(relayOrigin) ||
 export class RelayError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
+let pendingRenewal:Promise<RelaySession>|null=null;
+function renewSignedSessionOnce():Promise<RelaySession>{
+  if(pendingRenewal)return pendingRenewal;
+  pendingRenewal=ensureRelaySession(true).finally(()=>{pendingRenewal=null;});
+  return pendingRenewal;
+}
+/** Retries an authenticated request once after renewing the same signed
+ * device's token. Never silently retries an unrelated account/device. */
 export async function relayFetch<T>(path: string, options: {
   session?: RelaySession; body?: unknown; method?: "GET" | "POST"; signal?: AbortSignal;
-} = {}): Promise<T> {
+} = {},alreadyRetried=false): Promise<T> {
   if (!relayAvailable) throw new RelayError("Relay is not configured.", 503);
+  const session=sameDeviceSession(options.session,readCachedRelaySession());
   const response = await fetch(relayOrigin + path, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
-      ...(options.session ? { Authorization: "Bearer " + options.session.token } : {}),
+      ...(session ? { Authorization: "Bearer " + session.token } : {}),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     cache: "no-store",
     signal: options.signal,
   });
+  if(mayRenewRelayAuth(response.status,!!session,alreadyRetried,!!options.signal?.aborted)) {
+    const cached=newerSameDeviceSession(session,readCachedRelaySession());
+    const renewed=cached??await renewSignedSessionOnce();
+    if(renewed.deviceId!==session?.deviceId)
+      throw new RelayError("Signed device identity changed; session renewal refused.",403);
+    return relayFetch<T>(path,{...options,session:renewed},true);
+  }
   let result: unknown;
   try { result = await response.json(); } catch { throw new RelayError("Relay returned an invalid response.", response.status); }
   if (!response.ok) {
