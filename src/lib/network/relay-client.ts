@@ -2,7 +2,7 @@
 
 import { getOrCreateDeviceIdentity, signDeviceChallenge } from "@/lib/security/device-identity";
 import {
-  sameDeviceSession,newerSameDeviceSession,mayRenewRelayAuth,
+  sameDeviceSession,newerSameDeviceSession,mayRenewRelayAuth,singleFlight,
 } from "@/lib/network/session-recovery";
 
 export interface RelaySession {
@@ -39,12 +39,7 @@ export const relayAvailable = /^https:\/\//.test(relayOrigin) ||
 export class RelayError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
-let pendingRenewal:Promise<RelaySession>|null=null;
-function renewSignedSessionOnce():Promise<RelaySession>{
-  if(pendingRenewal)return pendingRenewal;
-  pendingRenewal=ensureRelaySession(true).finally(()=>{pendingRenewal=null;});
-  return pendingRenewal;
-}
+const renewSignedSessionOnce=singleFlight(()=>ensureRelaySession(true));
 /** Retries an authenticated request once after renewing the same signed
  * device's token. Never silently retries an unrelated account/device. */
 export async function relayFetch<T>(path: string, options: {
