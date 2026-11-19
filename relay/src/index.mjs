@@ -82,6 +82,15 @@ export class NoemaRelayRoom {
     return [...all.values()].filter((m) => m.seq > after && m.seq <= through)
       .sort((a,b) => a.seq-b.seq).slice(-LIMITS.maxHistory);
   }
+  async messagePage(id, after=0, before=Number.MAX_SAFE_INTEGER) {
+    // A page is bounded to the existing 60-envelope response limit.
+    // Strictly-exclusive 'before' prevents duplicates between pages.
+    const all=await this.state.storage.list({prefix:msgPrefix(id)});
+    const matching=[...all.values()].filter(m=>m.seq>after && m.seq<before)
+      .sort((a,b)=>a.seq-b.seq);
+    return {messages:matching.slice(-LIMITS.maxHistory),
+      hasMore:matching.length>LIMITS.maxHistory};
+  }
   async fetch(req) {
     if (!(await this.limit(req))) return fail(429,"Too many requests.");
     const url = new URL(req.url);
@@ -293,8 +302,16 @@ export class NoemaRelayRoom {
     if (!thread) return fail(404,"Conversation unavailable.");
     if (req.method==="GET"&&!action) return json({thread});
     if (req.method==="GET"&&action==="messages") {
-      const after=Number.parseInt(url.searchParams.get("after")||"0",10)||0;
-      return json({messages:await this.messages(id,Math.max(0,after)),nextSeq:thread.nextSeq});
+      const afterRaw=url.searchParams.get("after")||"0";
+      const beforeRaw=url.searchParams.get("before");
+      if(!/^(0|[1-9][0-9]*)$/.test(afterRaw) ||
+        (beforeRaw!==null && !/^[1-9][0-9]*$/.test(beforeRaw)))
+        return fail(400,"Invalid message cursor.");
+      const after=Number(afterRaw),before=beforeRaw===null?Number.MAX_SAFE_INTEGER:Number(beforeRaw);
+      if(!Number.isSafeInteger(after) || !Number.isSafeInteger(before) ||
+        after>=before)return fail(400,"Invalid message cursor.");
+      const page=await this.messagePage(id,after,before);
+      return json({...page,nextSeq:thread.nextSeq});
     }
     if (req.method==="POST"&&action==="reception") {
       if (thread.owner!==session.deviceId || !this.owner(session))
