@@ -67,9 +67,9 @@ test("both apps commit ciphertext before sending, and expose recovery actions",(
   const db=file("src/lib/db/client.ts");
   assert.match(db,/this\.version\(14\)\.stores\(\{ contactOutbox:/);
   assert.ok(owner.indexOf("await persistContactOutbox(item)")<
-    owner.indexOf("const result=await deliverContactOutbox(session,item)"));
+    owner.lastIndexOf("const result=await deliverContactOutbox(session,item)"));
   assert.ok(guest.indexOf("await saveQueue(item)")<
-    guest.indexOf("const result=await deliverQueued(item)"));
+    guest.lastIndexOf("const result=await deliverQueued(item)"));
   assert.match(owner,/Load older messages/);
   assert.match(owner,/Retry queued message/);
   assert.match(owner,/Discard queued message/);
