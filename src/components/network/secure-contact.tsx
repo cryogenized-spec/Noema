@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 import { useAgentStore } from "@/store/agent-store";
 import { useLockboxStore } from "@/store/lockbox-store";
@@ -11,7 +11,7 @@ import { getOrCreateDeviceIdentity } from "@/lib/security/device-identity";
 import { ContactQrCode } from "@/components/contact/contact-qr-code";
 import { makePublicGuestInvite } from "@/lib/network/public-guest-link";
 import {
-  ensureRelaySession, relayAvailable, relayFetch, relayGetIdentity, relayGetMessages, relayGetPolicy,
+  ensureRelaySession, relayAvailable, relayFetch, relayGetIdentity, relayGetMessages, relayGetOlderMessages, relayGetPolicy,
   relayGetThreads, relayPostMessage, relaySetPolicy, relaySetThreadReception,
   type ReceptionPolicy, type RelayMessage, type RelaySession, type RelayThread,
 } from "@/lib/network/relay-client";
@@ -20,6 +20,7 @@ import {
   saveContactSecret, secretFromHash,
 } from "@/lib/network/contact-crypto";
 import {latestIncomingSequence, markIncomingRead} from "@/lib/network/contact-unread";
+import {mergeMessagePages} from "@/lib/network/message-history";
 import {OffsetContactMenu} from "@/components/contact/offset-contact-menu";
 import {readDisplayPreferences,type DisplayPreferences} from "@/lib/ui/display-preferences";
 import type {MenuAnchor} from "@/lib/ui/offset-menu-position";
@@ -54,6 +55,8 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const [contextMenu,setContextMenu]=useState<OpenContactMenu|null>(null);
   const [displayPreferences,setDisplayPreferences]=useState<DisplayPreferences|null>(null);
   const [messages,setMessages]=useState<DecryptedMessage[]>([]);
+  const [historyHasMore,setHistoryHasMore]=useState(false);
+  const [olderLoading,setOlderLoading]=useState(false);
   const [alias,setAlias]=useState("");
   const [inviteSecret,setInviteSecret]=useState("");
   const [inviteUrl,setInviteUrl]=useState("");
@@ -71,6 +74,12 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const seenRef=useRef(new Set<string>());
   const pendingSend=useRef(new Map<string,{text:string;id:string;ciphertext:string}>());
   const messageLoadSequence=useRef(0);
+  const loadedThreadRef=useRef("");
+  const messageCacheRef=useRef<DecryptedMessage[]>([]);
+  const hasOlderRef=useRef(false);
+  const olderLoadingRef=useRef(false);
+  const historyViewportRef=useRef<HTMLDivElement|null>(null);
+  const historyScrollRestore=useRef<{threadId:string;height:number;top:number}|null>(null);
   const alive=useRef(true);
   const abort=useRef<AbortController|null>(null);
   const selectedRef=useRef("");
@@ -91,6 +100,13 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
   const ownerThread=!!session && active?.owner===session.deviceId;
 
   useEffect(()=>{selectedRef.current=selected;},[selected]);
+  useLayoutEffect(()=>{
+    const restore=historyScrollRestore.current;
+    const viewport=historyViewportRef.current;
+    if(!restore||!viewport||restore.threadId!==selected)return;
+    viewport.scrollTop=restore.top+(viewport.scrollHeight-restore.height);
+    historyScrollRestore.current=null;
+  },[messages,selected]);
   useEffect(()=>{sessionRef.current=session;},[session]);
   useEffect(()=>{threadsRef.current=threads;},[threads]);
   useEffect(()=>{policyRef.current=policy;},[policy]);
@@ -168,6 +184,11 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
         && response.threads.length && !inviteToken) {
       const id=response.threads[0].id;
       messageLoadSequence.current++;
+      loadedThreadRef.current=id;
+      messageCacheRef.current=[];
+      hasOlderRef.current=false;
+      setHistoryHasMore(false);
+      setMessages([]);
       setSelected(id);selectedRef.current=id;
     }
   },[inviteToken]);
@@ -182,13 +203,56 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
     }));
     if(alive.current && selectedRef.current===thread.id &&
        requestId===messageLoadSequence.current) {
-      setMessages(rendered);
+      const sameThread=loadedThreadRef.current===thread.id && messageCacheRef.current.length>0;
+      const merged=mergeMessagePages(sameThread?messageCacheRef.current:[],rendered);
+      loadedThreadRef.current=thread.id;
+      messageCacheRef.current=merged;
+      setMessages(merged);
+      if(!sameThread) {
+        hasOlderRef.current=result.hasMore;
+        setHistoryHasMore(result.hasMore);
+      }
       if(thread.owner===current.deviceId && ownerSectionRef.current==="inbox" &&
          document.visibilityState==="visible" &&
          (!window.matchMedia("(max-width: 767px)").matches || !mobileContactsRef.current))
         markIncomingRead(current.deviceId,thread.id,latestIncomingSequence(result.messages));
     }
     return rendered;
+  },[]);
+
+  const loadOlder=useCallback(async()=>{
+    const current=sessionRef.current;
+    const thread=threadsRef.current.find(t=>t.id===selectedRef.current);
+    if(!current||!thread||olderLoadingRef.current||!hasOlderRef.current)return;
+    const first=messageCacheRef.current[0]?.seq;
+    if(!Number.isSafeInteger(first)||!first||first<=1)return;
+    olderLoadingRef.current=true;
+    setOlderLoading(true);
+    const before=first;
+    try{
+      const page=await relayGetOlderMessages(current,thread.id,before);
+      const rendered=await Promise.all(page.messages.map(async message=>{
+        try{return {...message,text:await decryptContactMessage(
+          thread.keyId,thread.id,message.clientMessageId,message.content)};}
+        catch{return {...message,text:"[Encrypted: this browser cannot decrypt this message]"};}
+      }));
+      if(!alive.current||selectedRef.current!==thread.id||
+         loadedThreadRef.current!==thread.id)return;
+      const viewport=historyViewportRef.current;
+      if(viewport)historyScrollRestore.current={
+        threadId:thread.id,height:viewport.scrollHeight,top:viewport.scrollTop,
+      };
+      const merged=mergeMessagePages(messageCacheRef.current,rendered);
+      messageCacheRef.current=merged;
+      hasOlderRef.current=page.hasMore;
+      setHistoryHasMore(page.hasMore);
+      setMessages(merged);
+    }catch(e) {
+      if(alive.current&&selectedRef.current===thread.id)setError(errText(e));
+    }finally {
+      olderLoadingRef.current=false;
+      if(alive.current)setOlderLoading(false);
+    }
   },[]);
 
   const receive=useCallback(async(current:RelaySession)=>{
@@ -537,6 +601,11 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
                   onClick={()=>{
                     const nextId=thread.id;
                     messageLoadSequence.current++;
+                    loadedThreadRef.current=nextId;
+                    messageCacheRef.current=[];
+                    hasOlderRef.current=false;
+                    historyScrollRestore.current=null;
+                    setHistoryHasMore(false);
                     setSelected(nextId);selectedRef.current=nextId;
                     setNewThreadIds(current=>current.filter(id=>id!==nextId));
                     setMessages([]);setError("");
@@ -586,13 +655,18 @@ export function SecureContact({ inviteToken }: { inviteToken?:string }) {
               <Icon icon="solar:menu-dots-bold" className="text-xl" aria-hidden="true" />
             </button>:active.receptionEnabled&&<span className="text-[10px] text-noema-violet">AI Reception enabled</span>}
           </div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite"
+          <div ref={historyViewportRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite"
             onContextMenu={event=>{
               if(event.target!==event.currentTarget)return;
               event.preventDefault();
               setContextMenu({kind:"conversation",threadId:active.id,
                 anchor:{x:event.clientX,y:event.clientY}});
             }}>
+            {historyHasMore&&<button type="button" disabled={olderLoading}
+              className="mx-auto flex min-h-9 items-center justify-center rounded-lg border border-noema-border px-3 text-xs text-neutral-300 hover:bg-white/5 disabled:opacity-50"
+              onClick={()=>void loadOlder()} aria-label="Load older encrypted messages">
+              {olderLoading?"Loading…":"Load older messages"}
+            </button>}
             {messages.map(msg=><div key={msg.id}
               className={"group relative w-fit max-w-[92%] rounded-lg border p-3 text-xs leading-5 "+
                 ((ownerThread?msg.sender!=="guest":msg.sender==="guest")

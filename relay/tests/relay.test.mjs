@@ -262,3 +262,46 @@ test("push delivers one generic encrypted wake to other participant, never to se
     assert.equal(senderCalls.length,2,"Opted-out owner receives no new push");
   }finally{globalThis.fetch=fetchBefore;}
 });
+
+
+test("encrypted histories paginate across 60-message boundaries without losing older records",async()=>{
+  const {room,owner,guest,attacker,id,store}=await threadSetup();
+  const count=147;
+  // Preload a long encrypted conversation without stressing the unrelated IP
+  // request-limit test. These are the same durable records written by POST.
+  for(let seq=1;seq<=count;seq++){
+    store.data.set("msg:"+id+":"+String(seq).padStart(12,"0"),{
+      id:id+":"+seq,seq,clientMessageId:"client-message-"+String(seq).padStart(10,"0"),
+      content:ENCRYPTED,sender:seq%2?"guest":"owner",
+      createdAt:new Date(1763500000000+seq*1000).toISOString(),status:"stored",
+    });
+  }
+  store.data.set("thread:"+id,{...store.data.get("thread:"+id),nextSeq:count});
+  const target="/v1/threads/"+id+"/messages";
+  const latest=await call(room,target,{},owner.token,"GET");
+  assert.equal(latest.status,200);
+  assert.equal(latest.body.messages.length,LIMITS.maxHistory);
+  assert.equal(latest.body.messages[0].seq,88);
+  assert.equal(latest.body.messages.at(-1).seq,147);
+  assert.equal(latest.body.hasMore,true);
+  assert.equal(latest.body.nextSeq,147);
+  const page2=await call(room,target+"?before=88",{},guest.token,"GET");
+  assert.equal(page2.status,200);
+  assert.equal(page2.body.messages[0].seq,28);
+  assert.equal(page2.body.messages.at(-1).seq,87);
+  assert.equal(page2.body.hasMore,true);
+  const page3=await call(room,target+"?before=28",{},owner.token,"GET");
+  assert.deepEqual(page3.body.messages.map(x=>x.seq),Array.from({length:27},(_,i)=>i+1));
+  assert.equal(page3.body.hasMore,false);
+  const merged=[...page3.body.messages,...page2.body.messages,...latest.body.messages];
+  assert.equal(merged.length,count);
+  assert.deepEqual(merged.map(x=>x.seq),Array.from({length:count},(_,i)=>i+1));
+  assert.ok(merged.every(x=>x.content===ENCRYPTED),"Relay never returns decrypted messages");
+  assert.equal((await call(room,target+"?after=145",{},guest.token,"GET")).body.messages.length,2);
+  assert.equal((await call(room,target+"?before=1",{},owner.token,"GET")).body.hasMore,false);
+  for(const query of ["?before=xyz","?before=-1","?before=1.5","?after=-1",
+    "?before=1&after=1","?after=9999999999999999999999"])
+    assert.equal((await call(room,target+query,{},owner.token,"GET")).status,400,query);
+  assert.equal((await call(room,target+"?before=88",{},attacker.token,"GET")).status,404,
+    "History pages must enforce the same conversation membership");
+});

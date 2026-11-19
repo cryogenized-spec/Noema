@@ -96,9 +96,15 @@ export async function ensureRelaySession(force = false): Promise<RelaySession> {
 }
 export const relayGetThreads = (session: RelaySession) =>
   relayFetch<{ threads:RelayThread[] }>("/v1/threads", {session});
+export interface RelayMessagePage {
+  messages:RelayMessage[]; nextSeq:number; hasMore:boolean;
+}
 export const relayGetMessages = (session:RelaySession, id:string, after = 0) =>
-  relayFetch<{ messages:RelayMessage[];nextSeq:number }>(
+  relayFetch<RelayMessagePage>(
     "/v1/threads/" + encodeURIComponent(id) + "/messages?after=" + after, {session});
+export const relayGetOlderMessages = (session:RelaySession,id:string,before:number) =>
+  relayFetch<RelayMessagePage>(
+    "/v1/threads/" + encodeURIComponent(id) + "/messages?before=" + encodeURIComponent(String(before)), {session});
 export interface ReceptionPolicy {
   enabled:boolean; enabledAt:number; maxDailyCalls:number; maxThreadCalls:number;
 }
