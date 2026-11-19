@@ -398,13 +398,16 @@ async function refresh(){
   if(pollBusy||document.visibilityState==="hidden"||!session||token)return;
   pollBusy=true;
   try{
+    if(!session)await authenticate();
     const next=await remoteThreads();
     allThreads=next;
+    await cacheThreadRoster(next);
     if(!selected||!next.some(x=>x.id===selected)){
       selectThread(next[0]?.id||"");
     }
     renderTabs();renderPanels();renderPush();
     if(selected)await loadMessages();
+    await flushQueue();
     status("");
   }catch(e){status(serverError(e));}
   finally{pollBusy=false;}
@@ -423,7 +426,7 @@ async function accept(){
     // storage failure must not leave only one half of the saved conversation.
     await withStore("readwrite",store=>{
       store.put({id:"key:"+thread.keyId,key,createdAt:new Date().toISOString()});
-      store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId});
+      store.put({id:"thread:"+thread.id,threadId:thread.id,keyId:thread.keyId,thread});
       store.delete("pending:"+token);
     });
     token="";inviteSecret="";history.replaceState(null,"","/");
@@ -437,27 +440,31 @@ async function accept(){
 }
 async function send(event){
   event.preventDefault();
-  if(busy||!session||!selected)return;
+  if(busy||!device||!selected)return;
   const txt=ui.message.value.trim();
   if(!txt)return;
   const thread=allThreads.find(t=>t.id===selected);
   if(!thread)return;
   busy=true;ui.send.disabled=true;
   try{
-    const same=pendingSend&&pendingSend.threadId===thread.id&&pendingSend.text===txt;
-    const id=same?pendingSend.id:"message-"+crypto.randomUUID().replaceAll("-","");
-    const ciphertext=same?pendingSend.ciphertext:
-      await seal(await threadSecret(thread),thread.id,id,txt);
-    pendingSend={threadId:thread.id,text:txt,id,ciphertext};
-    await api("/v1/threads/"+encodeURIComponent(thread.id)+"/messages",
-      "POST",{clientMessageId:id,content:ciphertext});
-    pendingSend=null;
+    const id="message-"+crypto.randomUUID().replaceAll("-","");
+    const ciphertext=await seal(await threadSecret(thread),thread.id,id,txt);
+    const item={
+      id:outboxKey(device.deviceId,thread.id,id),
+      deviceId:device.deviceId,threadId:thread.id,keyId:thread.keyId,
+      clientMessageId:id,ciphertext,createdAt:new Date().toISOString(),
+    };
+    // Persist ciphertext first; never send if local durable storage failed.
+    await saveQueue(item);
     if(drafts.clearIfUnchanged(thread.id,txt) && selected===thread.id)ui.message.value="";
-    if(selected===thread.id){
-      lastRendered="";
-      await loadMessages();
-    }
-    status("");
+    const result=await deliverQueued(item);
+    await readQueued();
+    paintMessageHistory();
+    if(result==="sent"){
+      if(selected===thread.id){lastRendered="";await loadMessages();}
+      status("");
+    }else status(result==="blocked"?"Delivery rejected; retry or discard queued message."
+      :"Encrypted message queued until online.");
   }catch(e){status(serverError(e));}
   finally{busy=false;ui.send.disabled=false;}
 }
@@ -465,6 +472,9 @@ async function init(){
   renderPanels();
   try{
     device=await identity();
+    await restoreCachedThreads();
+    await readQueued();
+    paintMessageHistory();
     await authenticate();
     ui.accept.disabled=false;
     if(token&&!inviteSecret)status("Invitation decryption key is missing.");
