@@ -47,3 +47,19 @@ The Cloudflare Worker must be deployed separately, have VAPID keys configured
 server-side and explicitly set `PUSH_ENABLED=true`. A merged PWA alone does
 **not** mean background push is operational. A real owner/guest mobile test
 remains mandatory before marking Web Push live or promising device delivery.
+
+
+## 19 November — historical message recovery
+
+The Contact relay now supports bounded `before=<sequence>` pagination, in addition
+to the existing current-message endpoint. Both owner and guest interfaces offer
+**Load older messages** when more ciphertext exists on the relay. A 60-message
+response remains the maximum per request, while loaded pages are merged in
+server sequence order with concurrent foreground polling and the scroll
+position is preserved. Signed conversation membership still applies to every
+page; no plaintext or decryption keys are stored in Cloudflare.
+
+This restores access to older *server-retained ciphertext* from the same
+authenticated browser with its original contact key. It is **not** offline
+message storage, key backup, forward secrecy, or cross-device recovery.
+Keep the original browser origin and its IndexedDB contact keys intact.
