@@ -282,6 +282,7 @@ function selectThread(id){
   timeline.select(id);
   ui.message.value=drafts.get(id);
   lastRendered="";
+  paintMessageHistory();
   historyThread=id;
   messageCache=[];
   hasOlder=false;
@@ -295,7 +296,7 @@ function renderTabs(){
     tab.type="button";tab.className="thread"+(thread.id===selected?" active":"");
     tab.textContent=word(thread.ownerAlias)||"Private contact";
     tab.title="Open "+tab.textContent;
-    tab.addEventListener("click",()=>{selectThread(thread.id);renderTabs();void loadMessages();});
+tab.addEventListener("click",()=>{selectThread(thread.id);renderTabs();void loadMessages().catch(e=>status(serverError(e)));});
     ui.threads.append(tab);
   }
 }
@@ -346,6 +347,29 @@ function paintMessageHistory(prepend=false){
     date.textContent=new Date(message.createdAt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
     bubble.append(text,date);
     ui.messages.append(bubble);
+  }
+  for(const item of queued.filter(x=>x.threadId===selected)){
+    const row=document.createElement("div");row.className="queued-row";
+    const label=document.createElement("span");
+    label.textContent=item.blocked?"Not delivered":"Queued · encrypted";
+    const retry=document.createElement("button");retry.type="button";retry.textContent="Retry";
+    retry.setAttribute("aria-label","Retry queued message");
+    retry.addEventListener("click",async()=>{
+      retry.disabled=true;
+      try{
+        const result=await deliverQueued(item);
+        await readQueued();paintMessageHistory();
+        if(result==="sent"){lastRendered="";if(session)await loadMessages();}
+        else status(result==="blocked"?"Delivery rejected; message retained.":"Message remains queued.");
+      }catch(e){status(serverError(e));}finally{retry.disabled=false;}
+    });
+    const discard=document.createElement("button");discard.type="button";discard.textContent="Discard";
+    discard.setAttribute("aria-label","Discard queued message");
+    discard.addEventListener("click",async()=>{
+      try{await erase(item.id);await readQueued();paintMessageHistory();}
+      catch(e){status(serverError(e));}
+    });
+    row.append(label,retry,discard);ui.messages.append(row);
   }
   if(prepend)ui.messages.scrollTop=beforeTop+(ui.messages.scrollHeight-beforeHeight);
   else if(nearBottom || lastRendered==="")ui.messages.scrollTop=ui.messages.scrollHeight;
