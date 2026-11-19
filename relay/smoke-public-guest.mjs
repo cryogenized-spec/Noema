@@ -19,6 +19,15 @@ async function main(){
   assert.equal(script.status,200);
   assert.ok((await script.text()).includes('get("invite")'),
     "Guest must parse new fragment-only invitation links");
+  const sw=await fetch(GUEST+"/noema-push-sw.js",{signal:AbortSignal.timeout(16000)});
+  assert.equal(sw.status,200,"Guest service worker must be on the public origin");
+  const workerBody=await sw.text();
+  assert.ok(workerBody.includes('showNotification("New NOEMA message"'),
+    "Guest notification worker must display only generic alerts");
+  assert.ok(!workerBody.includes("inviteSecret")&&!workerBody.includes("message.text"),
+    "Guest service worker must never expose conversation content");
+  const pushPreflight=await req("/v1/push/config","OPTIONS",GUEST,"GET");
+  assert.equal(pushPreflight.status,204,"Guest push configuration allowed by CORS");
   const open=await req("/v1/auth/challenge","OPTIONS",GUEST,"POST");
   assert.equal(open.status,204);
   assert.equal(open.headers.get("access-control-allow-origin"),GUEST);
@@ -55,6 +64,26 @@ async function main(){
     cache:"no-store",signal:AbortSignal.timeout(16000)});
   assert.equal(sessionReply.status,200);
   assert.deepEqual((await sessionReply.json()).threads,[],"A new guest has no inherited conversations");
+  const configReply=await fetch(BASE+"/v1/push/config",{
+    headers:{"Origin":GUEST,"Authorization":"Bearer "+token},
+    cache:"no-store",signal:AbortSignal.timeout(16000),
+  });
+  assert.equal(configReply.status,200,"Signed guest push config must exist");
+  const pushConfig=await configReply.json();
+  assert.equal(pushConfig.scope,"guest");
+  assert.equal(typeof pushConfig.available,"boolean");
+  assert.equal(typeof pushConfig.enabled,"boolean");
+  assert.equal(pushConfig.enabled,false,"A newly signed anonymous device has no push subscription");
+  if(pushConfig.available)
+    assert.match(pushConfig.publicKey,/^[A-Za-z0-9_-]{80,100}$/);
+  else assert.equal(pushConfig.publicKey,null);
+  const unjoined=await post("/v1/push/subscribe",{subscription:{}},token);
+  assert.equal(unjoined.status,pushConfig.available?403:503,
+    "An uninvited device cannot register for notifications");
+  const nonSigned=await req("/v1/push/config","GET",GUEST);
+  assert.equal(nonSigned.status,401,"Push configuration requires signed authentication");
+  const badPush=await req("/v1/push/config","GET","https://untrusted.example");
+  assert.equal(badPush.status,403,"Untrusted origins cannot use push");
   const abuse=await post("/v1/invites",{keyId:"bogus-invalid-invite-id-12345"},token);
   assert.equal(abuse.status,403,"Signed guest still cannot issue owner invitations");
   const ownerOnly=await req("/v1/invites","OPTIONS",GUEST,"POST");
@@ -65,6 +94,6 @@ async function main(){
   assert.equal(ownerAccess.status,204,"Owner invitation creation still available at owner origin");
   const stranger=await req("/v1/identity","GET","https://untrusted.example");
   assert.equal(stranger.status,403);
-  console.log("LIVE public beta passed: guest site public, P-256 guest login and isolation verified, existing owner preserved.");
+  console.log("LIVE public beta passed: public guest PWA, P-256 login, push route/worker and isolation verified; original owner preserved.");
 }
 await main();
