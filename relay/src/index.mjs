@@ -184,7 +184,10 @@ export class NoemaRelayRoom {
         return fail(503,"Multi-user account enrollment is not activated.");
       const registry=new AccountRegistry(this.state.storage,
         deviceId=>this.state.storage.get("device:"+deviceId),
-        Date.now,{mailEnabled:this.env.ACCOUNT_MAILBOX_ENABLED==="true"});
+        Date.now,{
+          mailEnabled:this.env.ACCOUNT_MAILBOX_ENABLED==="true",
+          keyTransferEnabled:this.env.ACCOUNT_KEY_TRANSFER_ENABLED==="true",
+        });
       return registry.route(req,session);
     }
     if (req.method==="GET" && url.pathname==="/v1/identity") {

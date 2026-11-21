@@ -256,3 +256,14 @@ test("a revoked signed member loses account mailbox read/write immediately, with
   assert.equal((await request(room,path,candidate,{...encrypted,clientMessageId:"new-message-123456789"})).status,404);
   assert.equal((await request(room,path,owner,undefined,"GET")).data.messages.length,1);
 });
+
+
+test("new account encryption-key routes stay off even if registration is enabled",async()=>{
+  const {room,owner,candidate,requested,id,env}=await pendingSetup();
+  const target=url(id,"key-transfers/"+requested.data.requestId+"/offer");
+  assert.equal((await request(room,target,candidate,{offer:{}})).status,503);
+  assert.equal((await request(room,target,owner,undefined,"GET")).status,503);
+  env.ACCOUNT_KEY_TRANSFER_ENABLED="false";
+  assert.equal((await request(room,target,candidate,{offer:{}})).status,503);
+  assert.equal((await request(room,"/v1/identity",owner,undefined,"GET")).status,200);
+});
