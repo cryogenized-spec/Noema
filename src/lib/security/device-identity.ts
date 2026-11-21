@@ -107,3 +107,18 @@ export async function verifyDeviceProofSignature(proof: DeviceProof): Promise<bo
   return crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" },
     publicKey, asBuffer(unbase64url(proof.signature)), proofData(proof));
 }
+
+/** Use the current non-extractable device identity only after an explicit
+ * pairing/key-provisioning action; never export the signing private key.
+ */
+export async function signDeviceKeyTransfer(
+  expectedDeviceId:string,data:Uint8Array<ArrayBuffer>,
+):Promise<ArrayBuffer>{
+  if(data.byteLength<24 || data.byteLength>2500)
+    throw Error("Invalid key transfer statement size.");
+  const saved=await loadOrCreate();
+  if(saved.deviceId!==expectedDeviceId)
+    throw Error("Unexpected signing device: refusing key transfer.");
+  return crypto.subtle.sign({name:"ECDSA",hash:"SHA-256"},
+    saved.privateKey,asBuffer(data));
+}
