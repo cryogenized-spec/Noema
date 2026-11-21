@@ -73,11 +73,13 @@ export class AccountKeyTransfer {
     const pairing=await this.storage.get(keys.pair(requestId));
     if(pairing?.accountId!==accountId||pairing.status!=="approved")
       return null;
-    const [member,owner]=await Promise.all([
+    const [account,member,owner]=await Promise.all([
+      this.storage.get("accounts:entry:"+accountId),
       this.storage.get(keys.member(accountId,pairing.candidateDeviceId)),
       this.storage.get(keys.member(accountId,pairing.ownerDeviceId)),
     ]);
-    if(!memberActive(member,accountId,pairing.candidateDeviceId) ||
+    if(account?.status!=="active" ||
+       !memberActive(member,accountId,pairing.candidateDeviceId) ||
        !memberActive(owner,accountId,pairing.ownerDeviceId,true) ||
        !Number.isFinite(Date.parse(member.approvedAt)) ||
        this.clock()>=Date.parse(member.approvedAt)+10*60_000)
@@ -155,6 +157,8 @@ export class AccountKeyTransfer {
     }
     if(action==="claim"&&request.method==="POST"){
       if(session.deviceId!==candidate)return deny(403,"Recipient only.");
+      const ownerSigningKey=await this.getDeviceKey(owner);
+      if(!ownerSigningKey)return deny(404,"Owner identity unavailable.");
       const result=await this.storage.transaction(async tx=>{
         const membership=await tx.get(keys.member(accountId,candidate));
         if(!memberActive(membership,accountId,candidate))
@@ -169,8 +173,6 @@ export class AccountKeyTransfer {
         return {package:pkg};
       });
       if(result.status)return deny(result.status,"Key package unavailable.");
-      const ownerSigningKey=await this.getDeviceKey(owner);
-      if(!ownerSigningKey)return deny(404,"Owner identity unavailable.");
       return ok({package:result.package,ownerSigningKey});
     }
     return deny(405,"Unsupported exchange action.");
