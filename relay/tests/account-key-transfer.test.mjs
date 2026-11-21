@@ -26,6 +26,7 @@ async function setup(){
   const storage=mem(),owner=await device(),candidate=await device(),
     stranger=await device();
   const approvedAt=new Date().toISOString();
+  storage.data.set("accounts:entry:"+accountId,{id:accountId,status:"active"});
   storage.data.set("accounts:pair:"+requestId,{
     id:requestId,accountId,candidateDeviceId:candidate.deviceId,
     ownerDeviceId:owner.deviceId,status:"approved",
