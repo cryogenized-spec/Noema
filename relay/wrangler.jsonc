@@ -24,6 +24,7 @@
     "OWNER_DEVICE_ID": "",
     "ACCOUNT_REGISTRATION_ENABLED": "false",
     "ACCOUNT_MAILBOX_ENABLED": "false",
+    "ACCOUNT_KEY_TRANSFER_ENABLED": "false",
     "PUSH_ENABLED": "false"
   }
 }
