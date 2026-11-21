@@ -8,6 +8,7 @@ import {
   alias, isId, randomToken, sha256, verifyDeviceProof, sameOrigin,
 } from "./protocol.mjs";
 import {AccountMailbox} from "./account-mailbox.mjs";
+import {AccountKeyTransfer} from "./account-key-transfer.mjs";
 
 const lifetime = { offer: 5 * 60_000, request: 10 * 60_000, proof: 2 * 60_000 };
 const utcDay = () => new Date().toISOString().slice(0, 10);
@@ -55,7 +56,8 @@ export class AccountRegistry {
     this.storage=storage;
     this.getDeviceKey=getDeviceKey;
     this.clock=clock;
-    this.features={mailEnabled:features.mailEnabled===true};
+    this.features={mailEnabled:features.mailEnabled===true,
+      keyTransferEnabled:features.keyTransferEnabled===true};
   }
   async membership(accountId,deviceId,role="member") {
     const account=await this.storage.get(key.account(accountId));
@@ -88,6 +90,14 @@ export class AccountRegistry {
       const mailbox=new AccountMailbox(this.storage,
         (id,deviceId)=>this.membership(id,deviceId),this.clock);
       return mailbox.route(request,session,accountId,"messages",body);
+    }
+    const transfer=rest.match(/^key-transfers\/([A-Za-z0-9_-]{12,90})\/(offer|package|claim)$/);
+    if(transfer){
+      if(!this.features.keyTransferEnabled)
+        return reject(503,"Encrypted device key provisioning is not activated.");
+      const provisioner=new AccountKeyTransfer(
+        this.storage,this.getDeviceKey,this.clock);
+      return provisioner.route(request,session,accountId,transfer[1],transfer[2],body);
     }
     if(method==="GET"&&rest==="devices")return this.devices(session,accountId);
     if(method==="POST"&&rest==="pair-offers")return this.offer(session,accountId);
