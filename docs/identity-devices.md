@@ -1,6 +1,6 @@
 # NOEMA Identity & Device Management — design and staging implementation
 
-**Status:** UI and local domain foundations implemented, *no Cloudflare account registry or real device pairing is activated*. This branch is stacked on `feature/noema-e2ee-contact-reception` / PR #42 and must remain a **draft**, not merged to production before independent approval.
+**Status:** Local identity UI, signed membership prototype and account mailbox code have been merged behind default-off switches. **No independent account, device pairing or key transfer is active on the deployed Cloudflare relay.** The experimental key transfer module described below is test-only pending protocol review and real device approval.
 
 ## Distinguish the three identities
 
@@ -96,3 +96,52 @@ type PairingRequest = {
 ### Important limitations
 
 This branch **does not** deploy a new account service or allow publicly accessible signup; it builds the user experience and policy foundation while owner device approval is deferred. Live Cloudflare staging remains owner-bound and consent-gated. Do not turn on registration or account sync through a feature flag alone.
+
+
+## November 2026 — experimental encrypted key provisioning (disabled by default)
+
+New account member approval alone is **not** an E2EE conversation-key transfer.
+The new prototype adds an independently guarded route family
+`/v1/accounts/:id/key-transfers/:requestId/{offer,package,claim}` to the
+inactive account registry. It is disabled by the **fourth** explicit Worker
+flag `ACCOUNT_KEY_TRANSFER_ENABLED=false` and by the corresponding app flag
+`NEXT_PUBLIC_NOEMA_KEY_TRANSFER_ENABLED`. No new action is shown by the live
+user interface, and no account flag should be enabled to test this on real
+contacts without security review.
+
+For a *new account key only*, the approved candidate creates a fresh
+non-extractable P-256 ECDH private key and ECDSA-signs its public exchange key
+using its existing registered non-extractable device-signing key. The account
+owner independently verifies that signature and recipient's already verified
+device fingerprint, then uses ephemeral P-256 ECDH, HKDF-SHA256, and
+AES-256-GCM to encrypt a fresh 256-bit account seed only to that recipient.
+The owner signs the exact recipient-bound ciphertext envelope with its device
+signing key. The candidate verifies the owner's pinned device signing
+fingerprint, envelope signature, account/request/recipient binding and time
+limits before opening it into a **non-extractable** browser HKDF key.
+
+The relay validates account pairing approval and the registered signing
+identities, checks active member status on every action, stores only the
+candidate's public exchange offer and a bounded encrypted package, permits
+a single recipient claim, and refuses future claims for revoked devices.
+The window is deliberately limited to ten minutes after approval. A stored
+package is not a key escrow; the server cannot decrypt it.
+
+**Critical limitations and next gates:** This is an experimental composition
+of standard WebCrypto primitives, **not an audited messaging protocol**.
+There is no persistent candidate exchange-key storage or atomic browser
+key import, so a one-time claim can be lost if browser storage fails.
+There is no UI for consent/QR verification, no anti-MITM verification beyond
+the existing device-fingerprint comparison, no full end-to-end two-device
+delivery test, no future re-provisioning, no key ratchet, no forward secrecy
+for account messages, no key-backup/recovery, no rotation after revocation,
+and no guarantee that an already compromised device deletes previously
+acquired keys. Do not represent the account mailbox as E2EE or activate its
+flags until these issues, account-scoped routing and independent review are
+resolved.
+
+Legacy NOEMA contact keys are stored as **non-extractable** HKDF CryptoKeys
+under their original browser origin. This prototype neither exports nor
+copies those keys and cannot make old contact history available on a new
+device; migration requires a separately reviewed approach and explicit
+user choice. The existing single-owner relay/guest paths remain unchanged.
