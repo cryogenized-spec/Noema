@@ -30,9 +30,12 @@ const packageFields=(p)=>[
 ];
 const signed=(prefix,fields)=>utf8(prefix+"\n"+JSON.stringify(fields));
 const verify=async(jwk,data,signature)=>{
-  if(!publicP256(jwk)||!isB64(signature,80,100))return false;
+  if(!jwk || jwk.kty!=="EC" || jwk.crv!=="P-256" ||
+    !isB64(jwk.x,43,43)||!isB64(jwk.y,43,43)||
+    "d" in jwk || !isB64(signature,80,100))return false;
   try{
-    const key=await crypto.subtle.importKey("jwk",jwk,
+    const key=await crypto.subtle.importKey("jwk",
+      {kty:"EC",crv:"P-256",x:jwk.x,y:jwk.y},
       {name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
     return crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,
       unb64url(signature),data);
